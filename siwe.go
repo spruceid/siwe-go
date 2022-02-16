@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dchest/uniuri"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type ExpiredMessage struct{}
-type InvalidMessage struct{}
+type ExpiredMessage struct{ string }
+type InvalidMessage struct{ string }
 type InvalidSignature struct{ string }
 
 func (m *ExpiredMessage) Error() string {
@@ -48,7 +50,12 @@ type Message struct {
 func InitMessageOptions(options map[string]interface{}) *MessageOptions {
 	var issuedAt string
 	if val, ok := options["issuedAt"]; ok {
-		issuedAt = val.(time.Time).UTC().Format(time.RFC3339)
+		switch val.(type) {
+		case time.Time:
+			issuedAt = val.(time.Time).UTC().Format(time.RFC3339)
+		case string:
+			issuedAt = val.(string)
+		}
 	} else {
 		issuedAt = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -75,25 +82,42 @@ func InitMessageOptions(options map[string]interface{}) *MessageOptions {
 
 	var expirationTime *string
 	if val, ok := options["expirationTime"]; ok {
-		value := val.(time.Time).UTC().Format(time.RFC3339)
+		var value string
+		switch val.(type) {
+		case time.Time:
+			value = val.(time.Time).UTC().Format(time.RFC3339)
+		case string:
+			value = val.(string)
+		}
 		expirationTime = &value
 	}
 
 	var notBefore *string
 	if val, ok := options["notBefore"]; ok {
-		value := val.(time.Time).UTC().Format(time.RFC3339)
+		var value string
+		switch val.(type) {
+		case time.Time:
+			value = val.(time.Time).UTC().Format(time.RFC3339)
+		case string:
+			value = val.(string)
+		}
 		notBefore = &value
 	}
 
 	var requestID *string
-	if val, ok := options["requestID"]; ok {
+	if val, ok := options["requestId"]; ok {
 		value := val.(string)
 		requestID = &value
 	}
 
 	var resources []string
 	if val, ok := options["resources"]; ok {
-		resources = val.([]string)
+		switch val.(type) {
+		case []string:
+			resources = val.([]string)
+		case string:
+			resources = strings.Split(val.(string), "\n- ")[1:]
+		}
 	}
 
 	return &MessageOptions{
@@ -109,7 +133,7 @@ func InitMessageOptions(options map[string]interface{}) *MessageOptions {
 	}
 }
 
-func CreateMessage(domain, address, uri, version string, options MessageOptions) *Message {
+func InitMessage(domain, address, uri, version string, options MessageOptions) *Message {
 	return &Message{
 		Domain:         domain,
 		Address:        address,
@@ -120,32 +144,32 @@ func CreateMessage(domain, address, uri, version string, options MessageOptions)
 }
 
 func GenerateNonce() string {
-	return "test_nonce"
+	return uniuri.NewLen(16)
 }
 
 func isEmpty(str *string) bool {
-	return str != nil && len(strings.TrimSpace(*str)) == 0
+	return str == nil || len(strings.TrimSpace(*str)) == 0
 }
 
-const SIWE_DOMAIN = "^(?<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
-const SIWE_ADDRESS = "(?<address>0x[a-zA-Z0-9]{40})\\n\\n"
-const SIWE_STATEMENT = "((?<statement>[^\\n]+)\\n)?\\n"
+const SIWE_DOMAIN = "^(?P<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
+const SIWE_ADDRESS = "(?P<address>0x[a-zA-Z0-9]{40})\\n\\n"
+const SIWE_STATEMENT = "((?P<statement>[^\\n]+)\\n)?\\n"
 const SIWE_URI = "(([^:?#]+):)?(([^?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))"
 
-var SIWE_URI_LINE = fmt.Sprintf("URI: (?<uri>%s?)\\n", SIWE_URI)
+var SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", SIWE_URI)
 
-const SIWE_VERSION = "Version: (?<version>1)\\n"
-const SIWE_CHAIN_ID = "Chain ID: (?<chainId>[0-9]+)\\n"
-const SIWE_NONCE = "Nonce: (?<nonce>[a-zA-Z0-9]{8,})\\n"
+const SIWE_VERSION = "Version: (?P<version>1)\\n"
+const SIWE_CHAIN_ID = "Chain ID: (?P<chainId>[0-9]+)\\n"
+const SIWE_NONCE = "Nonce: (?P<nonce>[a-zA-Z0-9]{8,})\\n"
 const SIWE_DATETIME = "([0-9]+)-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\\.[0-9]+)?(([Zz])|([\\+|\\-]([01][0-9]|2[0-3]):[0-5][0-9]))"
 
-var SIWE_ISSUED_AT = fmt.Sprintf("Issued At: (?<issuedAt>%s)", SIWE_DATETIME)
-var SIWE_EXPIRATION_TIME = fmt.Sprintf("(\\nExpiration Time: (?<expirationTime>%s))?", SIWE_DATETIME)
-var SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?<notBefore>%s))?", SIWE_DATETIME)
+var SIWE_ISSUED_AT = fmt.Sprintf("Issued At: (?P<issuedAt>%s)", SIWE_DATETIME)
+var SIWE_EXPIRATION_TIME = fmt.Sprintf("(\\nExpiration Time: (?P<expirationTime>%s))?", SIWE_DATETIME)
+var SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?P<notBefore>%s))?", SIWE_DATETIME)
 
-const SIWE_REQUEST_ID = "(\\nRequest ID: (?<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
+const SIWE_REQUEST_ID = "(\\nRequest ID: (?P<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
 
-var SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?<resources>(\\n- %s?)+))?$", SIWE_URI)
+var SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s?)+))?$", SIWE_URI)
 
 var SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
 	SIWE_DOMAIN,
@@ -165,7 +189,7 @@ func ParseMessage(message string) *Message {
 	match := SIWE_MESSAGE.FindStringSubmatch(message)
 	result := make(map[string]interface{})
 	for i, name := range SIWE_MESSAGE.SubexpNames() {
-		if i != 0 && name != "" {
+		if i != 0 && name != "" && match[i] != "" {
 			result[name] = match[i]
 		}
 	}
@@ -186,7 +210,7 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 			return false, err
 		}
 		if time.Now().UTC().After(expirationTime) {
-			return false, &ExpiredMessage{}
+			return false, &ExpiredMessage{"Message expired"}
 		}
 	}
 
@@ -196,7 +220,7 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 			return false, err
 		}
 		if time.Now().UTC().Before(notBefore) {
-			return false, &InvalidMessage{}
+			return false, &InvalidMessage{"Message not yet valid"}
 		}
 	}
 
@@ -205,8 +229,13 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 	}
 
 	hash := crypto.Keccak256Hash([]byte(m.PrepareMessage()))
-	pkey, err := crypto.SigToPub(hash.Bytes(), []byte(signature))
 
+	sigBytes, err := hexutil.Decode(signature)
+	if err != nil {
+		return false, &InvalidSignature{"Failed to decode signature"}
+	}
+
+	pkey, err := crypto.SigToPub(hash.Bytes(), sigBytes)
 	if err != nil {
 		return false, &InvalidSignature{"Failed to recover public key from signature"}
 	}
@@ -221,7 +250,7 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 }
 
 func (m *Message) PrepareMessage() string {
-	greeting := fmt.Sprintf("%s wants you to sign with your Ethereum account:", m.Domain)
+	greeting := fmt.Sprintf("%s wants you to sign in with your Ethereum account:", m.Domain)
 	headerArr := []string{greeting, m.Address}
 
 	if isEmpty(m.Statement) {
@@ -255,10 +284,10 @@ func (m *Message) PrepareMessage() string {
 		bodyArr = append(bodyArr, value)
 	}
 
-	if len(m.Resources) == 0 {
+	if len(m.Resources) > 0 {
 		resourcesArr := make([]string, len(m.Resources))
 		for i, v := range m.Resources {
-			resourcesArr[i] = fmt.Sprintf("-  %s", v)
+			resourcesArr[i] = fmt.Sprintf("- %s", v)
 		}
 
 		resources := strings.Join(resourcesArr, "\n")
