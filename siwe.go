@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dchest/uniuri"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -151,44 +152,44 @@ func isEmpty(str *string) bool {
 	return str == nil || len(strings.TrimSpace(*str)) == 0
 }
 
-const SIWE_DOMAIN = "^(?P<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
-const SIWE_ADDRESS = "(?P<address>0x[a-zA-Z0-9]{40})\\n\\n"
-const SIWE_STATEMENT = "((?P<statement>[^\\n]+)\\n)?\\n"
-const SIWE_URI = "(([^:?#]+):)?(([^?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))"
+const _SIWE_DOMAIN = "^(?P<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
+const _SIWE_ADDRESS = "(?P<address>0x[a-zA-Z0-9]{40})\\n\\n"
+const _SIWE_STATEMENT = "((?P<statement>[^\\n]+)\\n)?\\n"
+const _SIWE_URI = "(([^:?#]+):)?(([^?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))"
 
-var SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", SIWE_URI)
+var _SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", _SIWE_URI)
 
-const SIWE_VERSION = "Version: (?P<version>1)\\n"
-const SIWE_CHAIN_ID = "Chain ID: (?P<chainId>[0-9]+)\\n"
-const SIWE_NONCE = "Nonce: (?P<nonce>[a-zA-Z0-9]{8,})\\n"
-const SIWE_DATETIME = "([0-9]+)-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\\.[0-9]+)?(([Zz])|([\\+|\\-]([01][0-9]|2[0-3]):[0-5][0-9]))"
+const _SIWE_VERSION = "Version: (?P<version>1)\\n"
+const _SIWE_CHAIN_ID = "Chain ID: (?P<chainId>[0-9]+)\\n"
+const _SIWE_NONCE = "Nonce: (?P<nonce>[a-zA-Z0-9]{8,})\\n"
+const _SIWE_DATETIME = "([0-9]+)-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\\.[0-9]+)?(([Zz])|([\\+|\\-]([01][0-9]|2[0-3]):[0-5][0-9]))"
 
-var SIWE_ISSUED_AT = fmt.Sprintf("Issued At: (?P<issuedAt>%s)", SIWE_DATETIME)
-var SIWE_EXPIRATION_TIME = fmt.Sprintf("(\\nExpiration Time: (?P<expirationTime>%s))?", SIWE_DATETIME)
-var SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?P<notBefore>%s))?", SIWE_DATETIME)
+var _SIWE_ISSUED_AT = fmt.Sprintf("Issued At: (?P<issuedAt>%s)", _SIWE_DATETIME)
+var _SIWE_EXPIRATION_TIME = fmt.Sprintf("(\\nExpiration Time: (?P<expirationTime>%s))?", _SIWE_DATETIME)
+var _SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?P<notBefore>%s))?", _SIWE_DATETIME)
 
-const SIWE_REQUEST_ID = "(\\nRequest ID: (?P<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
+const _SIWE_REQUEST_ID = "(\\nRequest ID: (?P<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
 
-var SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s?)+))?$", SIWE_URI)
+var _SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s?)+))?$", _SIWE_URI)
 
-var SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
-	SIWE_DOMAIN,
-	SIWE_ADDRESS,
-	SIWE_STATEMENT,
-	SIWE_URI_LINE,
-	SIWE_VERSION,
-	SIWE_CHAIN_ID,
-	SIWE_NONCE,
-	SIWE_ISSUED_AT,
-	SIWE_EXPIRATION_TIME,
-	SIWE_NOT_BEFORE,
-	SIWE_REQUEST_ID,
-	SIWE_RESOURCES))
+var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
+	_SIWE_DOMAIN,
+	_SIWE_ADDRESS,
+	_SIWE_STATEMENT,
+	_SIWE_URI_LINE,
+	_SIWE_VERSION,
+	_SIWE_CHAIN_ID,
+	_SIWE_NONCE,
+	_SIWE_ISSUED_AT,
+	_SIWE_EXPIRATION_TIME,
+	_SIWE_NOT_BEFORE,
+	_SIWE_REQUEST_ID,
+	_SIWE_RESOURCES))
 
 func ParseMessage(message string) *Message {
-	match := SIWE_MESSAGE.FindStringSubmatch(message)
+	match := _SIWE_MESSAGE.FindStringSubmatch(message)
 	result := make(map[string]interface{})
-	for i, name := range SIWE_MESSAGE.SubexpNames() {
+	for i, name := range _SIWE_MESSAGE.SubexpNames() {
 		if i != 0 && name != "" && match[i] != "" {
 			result[name] = match[i]
 		}
@@ -201,6 +202,11 @@ func ParseMessage(message string) *Message {
 		Version:        result["version"].(string),
 		MessageOptions: *InitMessageOptions(result),
 	}
+}
+
+func signHash(data []byte) common.Hash {
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
+	return crypto.Keccak256Hash([]byte(msg))
 }
 
 func (m *Message) ValidateMessage(signature string) (bool, error) {
@@ -228,12 +234,20 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 		return false, &InvalidSignature{"Signature cannot be empty"}
 	}
 
-	hash := crypto.Keccak256Hash([]byte(m.PrepareMessage()))
+	// Ref: https://stackoverflow.com/questions/49085737/geth-ecrecover-invalid-signature-recovery-id
+	data := m.PrepareMessage()
+	hash := signHash([]byte(data))
 
 	sigBytes, err := hexutil.Decode(signature)
 	if err != nil {
 		return false, &InvalidSignature{"Failed to decode signature"}
 	}
+
+	// Ref:https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L442
+	if sigBytes[64] != 27 && sigBytes[64] != 28 {
+		return false, &InvalidSignature{"Invalid signature bytes"}
+	}
+	sigBytes[64] -= 27
 
 	pkey, err := crypto.SigToPub(hash.Bytes(), sigBytes)
 	if err != nil {

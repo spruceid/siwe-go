@@ -186,8 +186,9 @@ func TestValidate(t *testing.T) {
 	message := InitMessage(domain, address, uri, version, *options)
 	prepare := message.PrepareMessage()
 
-	hash := crypto.Keccak256Hash([]byte(prepare))
-	signature, err := crypto.Sign(hash.Bytes(), privateKey)
+	sign := signHash([]byte(prepare))
+	signature, err := crypto.Sign(sign.Bytes(), privateKey)
+	signature[64] += 27
 
 	assert.Nil(t, err)
 
@@ -205,8 +206,9 @@ func TestValidateTampered(t *testing.T) {
 	message := InitMessage(domain, address, uri, version, *options)
 	prepare := message.PrepareMessage()
 
-	hash := crypto.Keccak256Hash([]byte(prepare))
-	signature, err := crypto.Sign(hash.Bytes(), privateKey)
+	sign := signHash([]byte(prepare))
+	signature, err := crypto.Sign(sign.Bytes(), privateKey)
+	signature[64] += 27
 
 	assert.Nil(t, err)
 
