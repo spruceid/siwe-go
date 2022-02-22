@@ -120,7 +120,7 @@ func TestPrepareParseRequired(t *testing.T) {
 }
 
 func TestValidateEmpty(t *testing.T) {
-	_, err := message.ValidateMessage("")
+	_, err := message.Verify("")
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signature cannot be empty"}, err)
@@ -152,7 +152,7 @@ func TestValidateNotBefore(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.ValidateMessage(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature))
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidMessage{"Message not yet valid"}, err)
@@ -173,7 +173,7 @@ func TestValidateExpirationTime(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.ValidateMessage(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature))
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &ExpiredMessage{"Message expired"}, err)
@@ -192,11 +192,9 @@ func TestValidate(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	result, err := message.ValidateMessage(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature))
 
-	if assert.NoError(t, err) {
-		assert.Equal(t, true, result)
-	}
+	assert.Nil(t, err)
 }
 
 func TestValidateTampered(t *testing.T) {
@@ -213,7 +211,7 @@ func TestValidateTampered(t *testing.T) {
 	assert.Nil(t, err)
 
 	message = InitMessage(domain, otherAddress, uri, version, *options)
-	_, err = message.ValidateMessage(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature))
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signer address must match message address"}, err)

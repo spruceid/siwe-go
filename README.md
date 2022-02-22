@@ -10,6 +10,65 @@ SIWE can be easily installed in any Go project by running:
 $ go get -u github.com/spruceid/siwe-go
 ```
 
+## Usage
+
+SIWE exposes a Message struct which implements EIP-4361.
+
+### Parsing a SIWE Message
+
+Parsing is done via the `siwe.ParseMessage` function:
+
+```go
+message := siwe.ParseMessage(messageStr)
+```
+
+### Verifying and Authenticating a SIWE Message
+
+Verification and Authentication is performed via EIP-191,
+using the address field of the Message as the expected signer.
+This returns the Ethereum public key of the signer:
+
+```go
+var publicKey *ecdsa.PublicKey
+var err error
+
+publicKey, err = message.VerifyEIP191(signature)
+```
+
+The time constraints (expiry and not-before) can also be
+validated, at current or particular times:
+
+```go
+if message.ValidNow() {
+  // ...
+}
+
+// equivalent to
+
+if message.ValidAt(time.Now().UTC()) {
+  // ...
+}
+```
+
+Combined verification of time constraints and authentication
+can be done in a single call with verify:
+
+```go
+var publicKey *ecdsa.PublicKey
+var err error
+
+publicKey, err = message.Verify(signature)
+```
+
+### Serialization of a SIWE Message
+
+Message instances can also be serialized as their EIP-4361
+string representations via the `PrepareMessage` method:
+
+```
+fmt.Printf("%s", message.PrepareMessage())
+```
+
 ## Disclaimer 
 
 Our Go library for Sign-In with Ethereum has not yet undergone a formal security 

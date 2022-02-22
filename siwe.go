@@ -1,6 +1,7 @@
 package siwe
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"regexp"
 	"strings"
@@ -209,7 +210,11 @@ func signHash(data []byte) common.Hash {
 	return crypto.Keccak256Hash([]byte(msg))
 }
 
-func (m *Message) ValidateMessage(signature string) (bool, error) {
+func (m *Message) ValidNow() (bool, error) {
+	return m.ValidAt(time.Now().UTC())
+}
+
+func (m *Message) ValidAt(when time.Time) (bool, error) {
 	if !isEmpty(m.ExpirationTime) {
 		expirationTime, err := time.Parse(time.RFC3339, *m.ExpirationTime)
 		if err != nil {
@@ -230,8 +235,12 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 		}
 	}
 
+	return true, nil
+}
+
+func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	if isEmpty(&signature) {
-		return false, &InvalidSignature{"Signature cannot be empty"}
+		return nil, &InvalidSignature{"Signature cannot be empty"}
 	}
 
 	// Ref: https://stackoverflow.com/questions/49085737/geth-ecrecover-invalid-signature-recovery-id
@@ -240,27 +249,37 @@ func (m *Message) ValidateMessage(signature string) (bool, error) {
 
 	sigBytes, err := hexutil.Decode(signature)
 	if err != nil {
-		return false, &InvalidSignature{"Failed to decode signature"}
+		return nil, &InvalidSignature{"Failed to decode signature"}
 	}
 
 	// Ref:https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L442
 	if sigBytes[64] != 27 && sigBytes[64] != 28 {
-		return false, &InvalidSignature{"Invalid signature bytes"}
+		return nil, &InvalidSignature{"Invalid signature bytes"}
 	}
 	sigBytes[64] -= 27
 
 	pkey, err := crypto.SigToPub(hash.Bytes(), sigBytes)
 	if err != nil {
-		return false, &InvalidSignature{"Failed to recover public key from signature"}
+		return nil, &InvalidSignature{"Failed to recover public key from signature"}
 	}
 
 	address := crypto.PubkeyToAddress(*pkey)
 
 	if address.String() != m.Address {
-		return false, &InvalidSignature{"Signer address must match message address"}
+		return nil, &InvalidSignature{"Signer address must match message address"}
 	}
 
-	return true, nil
+	return pkey, nil
+}
+
+func (m *Message) Verify(signature string) (*ecdsa.PublicKey, error) {
+	_, err := m.ValidNow()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return m.VerifyEIP191(signature)
 }
 
 func (m *Message) PrepareMessage() string {
