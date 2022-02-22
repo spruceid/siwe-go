@@ -6,8 +6,8 @@ This package provides a pure Go implementation of EIP-4361: Sign In With Ethereu
 
 SIWE can be easily installed in any Go project by running:
 
-``` bash
-$ go get -u github.com/spruceid/siwe-go
+```bash
+go get -u github.com/spruceid/siwe-go
 ```
 
 ## Usage
@@ -65,8 +65,32 @@ publicKey, err = message.Verify(signature)
 Message instances can also be serialized as their EIP-4361
 string representations via the `PrepareMessage` method:
 
-```
+```go
 fmt.Printf("%s", message.PrepareMessage())
+```
+
+## Signing Messages from Go code
+
+To sign messages directly from Go code, you will need to do it
+like shown below to correctly follow the `personal_sign` format.
+
+```go
+func signHash(data []byte) common.Hash {
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
+	return crypto.Keccak256Hash([]byte(msg))
+}
+
+func signMessage(message string, privateKey *ecdsa.PrivateKey) ([]byte, error) {
+	sign := signHash([]byte(message))
+	signature, err := crypto.Sign(sign.Bytes(), privateKey)
+
+	if err != nil {
+		return nil, err
+	}
+
+	signature[64] += 27
+	return signature, nil
+}
 ```
 
 ## Disclaimer 
