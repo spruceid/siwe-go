@@ -13,9 +13,14 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+type ParsingFailed struct{ string }
 type ExpiredMessage struct{ string }
 type InvalidMessage struct{ string }
 type InvalidSignature struct{ string }
+
+func (m *ParsingFailed) Error() string {
+	return "Expired Message"
+}
 
 func (m *ExpiredMessage) Error() string {
 	return "Expired Message"
@@ -187,8 +192,13 @@ var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
 	_SIWE_REQUEST_ID,
 	_SIWE_RESOURCES))
 
-func ParseMessage(message string) *Message {
+func ParseMessage(message string) (*Message, error) {
 	match := _SIWE_MESSAGE.FindStringSubmatch(message)
+
+	if match == nil {
+		return nil, &ParsingFailed{"Message could not be parsed"}
+	}
+
 	result := make(map[string]interface{})
 	for i, name := range _SIWE_MESSAGE.SubexpNames() {
 		if i != 0 && name != "" && match[i] != "" {
@@ -202,7 +212,7 @@ func ParseMessage(message string) *Message {
 		URI:            result["uri"].(string),
 		Version:        result["version"].(string),
 		MessageOptions: *InitMessageOptions(result),
-	}
+	}, nil
 }
 
 func signHash(data []byte) common.Hash {

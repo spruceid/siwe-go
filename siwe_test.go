@@ -104,7 +104,9 @@ func TestCreateRequired(t *testing.T) {
 
 func TestPrepareParse(t *testing.T) {
 	prepare := message.PrepareMessage()
-	parse := ParseMessage(prepare)
+	parse, err := ParseMessage(prepare)
+
+	assert.Nil(t, err)
 
 	compareMessage(t, message, parse)
 }
@@ -114,7 +116,9 @@ func TestPrepareParseRequired(t *testing.T) {
 	message := InitMessage(domain, address, uri, version, *options)
 
 	prepare := message.PrepareMessage()
-	parse := ParseMessage(prepare)
+	parse, err := ParseMessage(prepare)
+
+	assert.Nil(t, err)
 
 	compareMessage(t, message, parse)
 }
@@ -215,5 +219,261 @@ func TestValidateTampered(t *testing.T) {
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signer address must match message address"}, err)
+	}
+}
+
+func TestGlobalParsingNegative(t *testing.T) {
+	cases := map[string]string{
+		"missing mandatory field": "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nVersion: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24Z",
+		"extra line breaks":       "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24Z",
+		"non-ISO datetime":        "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nNonce: 32891757\nIssued At: Wed Oct 05 2011 16:48:00 GMT+0200 (CEST)",
+		"out of order fields":     "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nVersion: 1\nNonce: 32891757\nURI: https://service.org/login\nIssued At: 2021-09-30T16:25:24.000Z",
+		"wrong version":           "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 2\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+	}
+
+	for k, v := range cases {
+		_, err := ParseMessage(v)
+		assert.Error(t, err, k)
+	}
+}
+
+func TestGlobalParsingPositive(t *testing.T) {
+	cases := map[string]map[string]interface{}{
+		"couple of optional fields": {
+			"message": "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z\nResources:\n- ipfs://Qme7ss3ARVgxv6rXqVPiikMJ8u2NLgmgszg13pYrDKEoiu\n- https://example.com/my-web2-claim.json",
+			"fields": map[string]interface{}{
+				"domain":    "service.org",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+				"resources": []string{"ipfs://Qme7ss3ARVgxv6rXqVPiikMJ8u2NLgmgszg13pYrDKEoiu", "https://example.com/my-web2-claim.json"},
+			},
+		},
+		"no optional field": {
+			"message": "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":    "service.org",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+			},
+		},
+		"timestamp without microseconds": {
+			"message": "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24Z",
+			"fields": map[string]interface{}{
+				"domain":    "service.org",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24Z",
+			},
+		},
+		"domain is RFC 3986 authority with IP": {
+			"message": "127.0.0.1 wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":    "127.0.0.1",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+			},
+		},
+		"domain is RFC 3986 authority with userinfo": {
+			"message": "test@127.0.0.1 wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":    "test@127.0.0.1",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+			},
+		},
+		"domain is RFC 3986 authority with port": {
+			"message": "127.0.0.1:8080 wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":    "127.0.0.1:8080",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+			},
+		},
+		"domain is RFC 3986 authority with userinfo and port": {
+			"message": "test@127.0.0.1:8080 wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\nI accept the ServiceOrg Terms of Service: https://service.org/tos\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":    "test@127.0.0.1:8080",
+				"address":   "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"statement": "I accept the ServiceOrg Terms of Service: https://service.org/tos",
+				"uri":       "https://service.org/login",
+				"version":   "1",
+				"chainId":   "1",
+				"nonce":     "32891757",
+				"issuedAt":  "2021-09-30T16:25:24.000Z",
+			},
+		},
+		"no statement": {
+			"message": "service.org wants you to sign in with your Ethereum account:\n0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\n\n\nURI: https://service.org/login\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z",
+			"fields": map[string]interface{}{
+				"domain":   "service.org",
+				"address":  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+				"uri":      "https://service.org/login",
+				"version":  "1",
+				"chainId":  "1",
+				"nonce":    "32891757",
+				"issuedAt": "2021-09-30T16:25:24.000Z",
+			},
+		},
+	}
+
+	for k, v := range cases {
+		message := v["message"].(string)
+		fields := v["fields"].(map[string]interface{})
+		parsed, err := ParseMessage(message)
+		assert.Nil(t, err, k)
+
+		validateGlobalCase(t, fields, parsed.Domain, "domain")
+		validateGlobalCase(t, fields, parsed.Address, "address")
+		validateGlobalCase(t, fields, parsed.URI, "uri")
+		validateGlobalCase(t, fields, parsed.Version, "version")
+
+		if parsed.Statement != nil {
+			validateGlobalCase(t, fields, *parsed.Statement, "statement")
+		}
+
+		if parsed.ChainID != nil {
+			validateGlobalCase(t, fields, *parsed.ChainID, "chainId")
+		}
+
+		if parsed.Nonce != nil {
+			validateGlobalCase(t, fields, *parsed.Nonce, "nonce")
+		}
+
+		if parsed.IssuedAt != nil {
+			validateGlobalCase(t, fields, *parsed.IssuedAt, "issuedAt")
+		}
+	}
+}
+
+func validateGlobalCase(t *testing.T, fields map[string]interface{}, parsed string, key string) {
+	if field, ok := fields[key]; ok {
+		assert.Equal(t, parsed, field, "%s should be %s", key, field)
+	}
+}
+
+func TestValidateNegative(t *testing.T) {
+	cases := map[string]map[string]interface{}{
+		"expired message": {
+			"domain":         "login.xyz",
+			"address":        "0x6Da01670d8fc844e736095918bbE11fE8D564163",
+			"statement":      "Sign-In With Ethereum Example Statement",
+			"uri":            "https://login.xyz",
+			"version":        "1",
+			"nonce":          "lx2nx4so",
+			"issuedAt":       "2022-01-05T14:27:30.883Z",
+			"chainId":        "1",
+			"expirationTime": "2021-01-05T00:00:00Z",
+			"signature":      "0x5e6834e82ec12532e3954882610b26ef83c16d25a38caccc6a009a488b6ad1237318ec6cd2fd83c19f49d0cb0848c70e9a5a4bf550ce5d69bc1b023b9f6b7f601b",
+		},
+		"malformed signature": {
+			"domain":         "login.xyz",
+			"address":        "0x6Da01670d8fc844e736095918bbE11fE8D564163",
+			"statement":      "Sign-In With Ethereum Example Statement",
+			"uri":            "https://login.xyz",
+			"version":        "1",
+			"nonce":          "rmplqh1gf",
+			"issuedAt":       "2022-01-05T14:31:43.954Z",
+			"chainId":        "1",
+			"expirationTime": "2022-01-07T14:31:43.952Z",
+			"signature":      "0xf2e8420fc1b722bf4941f5a0464f98172a758ceda5039f622e425fb69fd19b20e444bba7c9a8a8d7e2b5e453553efe7c9460be5d211abe473fc146d51bb04d0cb1b",
+		},
+		"wrong signature": {
+			"domain":         "login.xyz",
+			"address":        "0x6Da01670d8fc844e736095918bbE11fE8D564163",
+			"statement":      "Sign-In With Ethereum Example Statement",
+			"uri":            "https://login.xyz",
+			"version":        "1",
+			"nonce":          "rmplqh1gf",
+			"issuedAt":       "2022-01-05T14:31:43.954Z",
+			"chainId":        "1",
+			"expirationTime": "2022-01-07T14:31:43.952Z",
+			"signature":      "0x31df81dc02344c9156e6f71da46e2db624b38f8f806290d670d46492b834b2e7575cbce9f48169356cfb577b910d8e30732fcf23c1ac0021d08b945ed7ee118e1b",
+		},
+		"invalid expiration time": {
+			"domain":         "login.xyz",
+			"address":        "0x6Da01670d8fc844e736095918bbE11fE8D564163",
+			"statement":      "Sign-In With Ethereum Example Statement",
+			"uri":            "https://login.xyz",
+			"version":        "1",
+			"nonce":          "o8zxjgmp",
+			"issuedAt":       "2022-01-05T14:50:55.688Z",
+			"chainId":        "1",
+			"expirationTime": "2020-02-32T00:00:00.000Z",
+			"signature":      "0x8b457a36dad94cb9c07cfcad08664c988d795b35762f1316438b9590c27f4a5e028e923066a49908c88a1e2fba299c1e6d6d8206181339343e0ef53be01d078f1c",
+		},
+	}
+
+	for k, v := range cases {
+		message := InitMessage(
+			v["domain"].(string),
+			v["address"].(string),
+			v["uri"].(string),
+			v["version"].(string),
+			*InitMessageOptions(v),
+		)
+
+		_, err := message.Verify(v["signature"].(string))
+
+		assert.Error(t, err, k)
+	}
+}
+
+func TextValidatePositive(t *testing.T) {
+	cases := map[string]map[string]interface{}{
+		"example message": {
+			"domain":         "login.xyz",
+			"address":        "0x9D85ca56217D2bb651b00f15e694EB7E713637D4",
+			"statement":      "Sign-In With Ethereum Example Statement",
+			"uri":            "https://login.xyz",
+			"version":        "1",
+			"nonce":          "bTyXgcQxn2htgkjJn",
+			"issuedAt":       "2022-01-27T17:09:38.578Z",
+			"chainId":        "1",
+			"expirationTime": "2100-01-07T14:31:43.952Z",
+			"signature":      "0xdc35c7f8ba2720df052e0092556456127f00f7707eaa8e3bbff7e56774e7f2e05a093cfc9e02964c33d86e8e066e221b7d153d27e5a2e97ccd5ca7d3f2ce06cb1b",
+		},
+	}
+
+	for k, v := range cases {
+		message := InitMessage(
+			v["domain"].(string),
+			v["address"].(string),
+			v["uri"].(string),
+			v["version"].(string),
+			*InitMessageOptions(v),
+		)
+
+		_, err := message.Verify(v["signature"].(string))
+
+		assert.Nil(t, err, k)
 	}
 }
