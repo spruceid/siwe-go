@@ -220,6 +220,10 @@ func signHash(data []byte) common.Hash {
 	return crypto.Keccak256Hash([]byte(msg))
 }
 
+func (m *Message) getLowercaseAddress() string {
+	return strings.ToLower(m.Address)
+}
+
 func (m *Message) ValidNow() (bool, error) {
 	return m.ValidAt(time.Now().UTC())
 }
@@ -275,7 +279,9 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 
 	address := crypto.PubkeyToAddress(*pkey)
 
-	if address.String() != m.Address {
+	addressLowercase := strings.ToLower(address.String())
+
+	if addressLowercase != m.getLowercaseAddress() {
 		return nil, &InvalidSignature{"Signer address must match message address"}
 	}
 
