@@ -11,8 +11,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/relvacode/iso8601"
 )
 
+type MalformedMessage struct{ string }
 type ParsingFailed struct{ string }
 type ExpiredMessage struct{ string }
 type InvalidMessage struct{ string }
@@ -34,44 +36,38 @@ func (m *InvalidSignature) Error() string {
 	return fmt.Sprintf("Invalid Signature: %s", m.string)
 }
 
-type MessageOptions struct {
-	IssuedAt *string `json:"issuedAt"`
-	Nonce    *string `json:"nonce"`
-	ChainID  *string `json:"chainId"`
-
-	Statement      *string  `json:"statement,omitempty"`
-	ExpirationTime *string  `json:"expirationTime,omitempty"`
-	NotBefore      *string  `json:"notBefore,omitempty"`
-	RequestID      *string  `json:"requestId,omitempty"`
-	Resources      []string `json:"resources,omitempty"`
-}
-
 type Message struct {
-	Domain  string `json:"domain"`
-	Address string `json:"address"`
-	URI     string `json:"uri"`
-	Version string `json:"version"`
-	MessageOptions
+	domain  string
+	address common.Address
+	uri     string
+	version string
+
+	statement *string
+	nonce     *string
+	chainID   string
+
+	issuedAt       time.Time
+	expirationTime *time.Time
+	notBefore      *time.Time
+
+	requestID *string
+	resources []string
 }
 
-func InitMessageOptions(options map[string]interface{}) *MessageOptions {
-	var issuedAt string
-	if val, ok := options["issuedAt"]; ok {
-		switch val.(type) {
-		case time.Time:
-			issuedAt = val.(time.Time).UTC().Format(time.RFC3339)
-		case string:
-			issuedAt = val.(string)
-		}
-	} else {
-		issuedAt = time.Now().UTC().Format(time.RFC3339)
+func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
+	var statement *string
+	if val, ok := options["statement"]; ok {
+		value := val.(string)
+		statement = &value
 	}
 
-	var nonce string
+	var nonce *string
 	if val, ok := options["nonce"]; ok {
-		nonce = val.(string)
+		value := val.(string)
+		nonce = &value
 	} else {
-		nonce = GenerateNonce()
+		value := GenerateNonce()
+		nonce = &value
 	}
 
 	var chainId string
@@ -81,32 +77,56 @@ func InitMessageOptions(options map[string]interface{}) *MessageOptions {
 		chainId = "1"
 	}
 
-	var statement *string
-	if val, ok := options["statement"]; ok {
-		value := val.(string)
-		statement = &value
-	}
-
-	var expirationTime *string
-	if val, ok := options["expirationTime"]; ok {
-		var value string
+	var issuedAt time.Time
+	if val, ok := options["issuedAt"]; ok {
 		switch val.(type) {
 		case time.Time:
-			value = val.(time.Time).UTC().Format(time.RFC3339)
+			issuedAt = val.(time.Time).UTC()
 		case string:
-			value = val.(string)
+			parsed, err := iso8601.ParseString(val.(string))
+			if err != nil {
+				return nil, &InvalidMessage{"Failed to parse `issuedAt`"}
+			}
+			issuedAt = parsed
+		default:
+			return nil, &InvalidMessage{"`issuedAt` must be either a string or time.Time"}
+		}
+	} else {
+		issuedAt = time.Now().UTC()
+	}
+
+	var expirationTime *time.Time
+	if val, ok := options["expirationTime"]; ok {
+		var value time.Time
+		switch val.(type) {
+		case time.Time:
+			value = val.(time.Time).UTC()
+		case string:
+			parsed, err := iso8601.ParseString(val.(string))
+			if err != nil {
+				return nil, &InvalidMessage{"Failed to parse `expirationTime`"}
+			}
+			value = parsed
+		default:
+			return nil, &InvalidMessage{"`expirationTime` must be either a string or time.Time"}
 		}
 		expirationTime = &value
 	}
 
-	var notBefore *string
+	var notBefore *time.Time
 	if val, ok := options["notBefore"]; ok {
-		var value string
+		var value time.Time
 		switch val.(type) {
 		case time.Time:
-			value = val.(time.Time).UTC().Format(time.RFC3339)
+			value = val.(time.Time).UTC()
 		case string:
-			value = val.(string)
+			parsed, err := iso8601.ParseString(val.(string))
+			if err != nil {
+				return nil, &InvalidMessage{"Failed to parse `notBefore`"}
+			}
+			value = parsed
+		default:
+			return nil, &InvalidMessage{"`notBefore` must be either a string or time.Time"}
 		}
 		notBefore = &value
 	}
@@ -122,32 +142,116 @@ func InitMessageOptions(options map[string]interface{}) *MessageOptions {
 		switch val.(type) {
 		case []string:
 			resources = val.([]string)
-		case string:
-			resources = strings.Split(val.(string), "\n- ")[1:]
+		default:
+			return nil, &InvalidMessage{"`resources` must be a []string"}
 		}
 	}
 
-	return &MessageOptions{
-		IssuedAt: &issuedAt,
-		Nonce:    &nonce,
-		ChainID:  &chainId,
+	return &Message{
+		domain:  domain,
+		address: common.HexToAddress(address),
+		uri:     uri,
+		version: version,
 
-		Statement:      statement,
-		ExpirationTime: expirationTime,
-		NotBefore:      notBefore,
-		RequestID:      requestID,
-		Resources:      resources,
-	}
+		statement: statement,
+		nonce:     nonce,
+		chainID:   chainId,
+
+		issuedAt:       issuedAt,
+		expirationTime: expirationTime,
+		notBefore:      notBefore,
+
+		requestID: requestID,
+		resources: resources,
+	}, nil
 }
 
-func InitMessage(domain, address, uri, version string, options MessageOptions) *Message {
-	return &Message{
-		Domain:         domain,
-		Address:        address,
-		URI:            uri,
-		Version:        version,
-		MessageOptions: options,
+func (m *Message) GetDomain() string {
+	return m.domain
+}
+
+func (m *Message) GetAddress() common.Address {
+	return m.address
+}
+
+func (m *Message) GetURI() string {
+	return m.uri
+}
+
+func (m *Message) GetVersion() string {
+	return m.version
+}
+
+func (m *Message) GetStatement() *string {
+	if m.statement != nil {
+		ret := *m.statement
+		return &ret
 	}
+	return nil
+}
+
+func (m *Message) GetNonce() *string {
+	if m.nonce != nil {
+		ret := *m.nonce
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetChainID() string {
+	return m.chainID
+}
+
+func (m *Message) GetIssuedAt() time.Time {
+	return m.issuedAt
+}
+
+func (m *Message) GetIssuedAtString() string {
+	return m.issuedAt.Format(time.RFC3339)
+}
+
+func (m *Message) GetExpirationTime() *time.Time {
+	if m.expirationTime != nil {
+		ret := *m.expirationTime
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetExpirationTimeStr() *string {
+	if m.expirationTime != nil {
+		ret := m.expirationTime.Format(time.RFC3339)
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetNotBefore() *time.Time {
+	if m.notBefore != nil {
+		ret := *m.notBefore
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetNotBeforeStr() *string {
+	if m.notBefore != nil {
+		ret := m.notBefore.Format(time.RFC3339)
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetRequestID() *string {
+	if m.requestID != nil {
+		ret := *m.requestID
+		return &ret
+	}
+	return nil
+}
+
+func (m *Message) GetResources() []string {
+	return m.resources
 }
 
 func GenerateNonce() string {
@@ -192,7 +296,7 @@ var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
 	_SIWE_REQUEST_ID,
 	_SIWE_RESOURCES))
 
-func ParseMessage(message string) (*Message, error) {
+func parseMessage(message string) (map[string]interface{}, error) {
 	match := _SIWE_MESSAGE.FindStringSubmatch(message)
 
 	if match == nil {
@@ -206,13 +310,38 @@ func ParseMessage(message string) (*Message, error) {
 		}
 	}
 
-	return &Message{
-		Domain:         result["domain"].(string),
-		Address:        result["address"].(string),
-		URI:            result["uri"].(string),
-		Version:        result["version"].(string),
-		MessageOptions: *InitMessageOptions(result),
-	}, nil
+	originalAddress := result["address"].(string)
+	parsedAddress := common.HexToAddress(originalAddress)
+	if originalAddress != parsedAddress.String() {
+		return nil, &ParsingFailed{"Address must be in EIP-55 format"}
+	}
+
+	if val, ok := result["resources"]; ok {
+		result["resources"] = strings.Split(val.(string), "\n- ")[1:]
+	}
+
+	return result, nil
+}
+
+func ParseMessage(message string) (*Message, error) {
+	result, err := parseMessage(message)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := InitMessage(
+		result["domain"].(string),
+		result["address"].(string),
+		result["uri"].(string),
+		result["version"].(string),
+		result,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return parsed, nil
 }
 
 func signHash(data []byte) common.Hash {
@@ -220,31 +349,19 @@ func signHash(data []byte) common.Hash {
 	return crypto.Keccak256Hash([]byte(msg))
 }
 
-func (m *Message) getLowercaseAddress() string {
-	return strings.ToLower(m.Address)
-}
-
 func (m *Message) ValidNow() (bool, error) {
 	return m.ValidAt(time.Now().UTC())
 }
 
 func (m *Message) ValidAt(when time.Time) (bool, error) {
-	if !isEmpty(m.ExpirationTime) {
-		expirationTime, err := time.Parse(time.RFC3339, *m.ExpirationTime)
-		if err != nil {
-			return false, err
-		}
-		if time.Now().UTC().After(expirationTime) {
+	if m.expirationTime != nil {
+		if time.Now().UTC().After(*m.expirationTime) {
 			return false, &ExpiredMessage{"Message expired"}
 		}
 	}
 
-	if !isEmpty(m.NotBefore) {
-		notBefore, err := time.Parse(time.RFC3339, *m.NotBefore)
-		if err != nil {
-			return false, err
-		}
-		if time.Now().UTC().Before(notBefore) {
+	if m.notBefore != nil {
+		if time.Now().UTC().Before(*m.notBefore) {
 			return false, &InvalidMessage{"Message not yet valid"}
 		}
 	}
@@ -279,9 +396,7 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 
 	address := crypto.PubkeyToAddress(*pkey)
 
-	addressLowercase := strings.ToLower(address.String())
-
-	if addressLowercase != m.getLowercaseAddress() {
+	if address != m.address {
 		return nil, &InvalidSignature{"Signer address must match message address"}
 	}
 
@@ -299,43 +414,43 @@ func (m *Message) Verify(signature string) (*ecdsa.PublicKey, error) {
 }
 
 func (m *Message) PrepareMessage() string {
-	greeting := fmt.Sprintf("%s wants you to sign in with your Ethereum account:", m.Domain)
-	headerArr := []string{greeting, m.Address}
+	greeting := fmt.Sprintf("%s wants you to sign in with your Ethereum account:", m.domain)
+	headerArr := []string{greeting, m.address.String()}
 
-	if isEmpty(m.Statement) {
+	if isEmpty(m.statement) {
 		headerArr = append(headerArr, "\n")
 	} else {
-		headerArr = append(headerArr, fmt.Sprintf("\n%s\n", *m.Statement))
+		headerArr = append(headerArr, fmt.Sprintf("\n%s\n", *m.statement))
 	}
 
 	header := strings.Join(headerArr, "\n")
 
-	uri := fmt.Sprintf("URI: %s", m.URI)
-	version := fmt.Sprintf("Version: %s", m.Version)
-	chainId := fmt.Sprintf("Chain ID: %s", *m.ChainID)
-	nonce := fmt.Sprintf("Nonce: %s", *m.Nonce)
-	issuedAt := fmt.Sprintf("Issued At: %s", *m.IssuedAt)
+	uri := fmt.Sprintf("URI: %s", m.uri)
+	version := fmt.Sprintf("Version: %s", m.version)
+	chainId := fmt.Sprintf("Chain ID: %s", m.chainID)
+	nonce := fmt.Sprintf("Nonce: %s", *m.nonce)
+	issuedAt := fmt.Sprintf("Issued At: %s", m.issuedAt.Format(time.RFC3339))
 
 	bodyArr := []string{uri, version, chainId, nonce, issuedAt}
 
-	if !isEmpty(m.ExpirationTime) {
-		value := fmt.Sprintf("Expiration Time: %s", *m.ExpirationTime)
+	if m.expirationTime != nil {
+		value := fmt.Sprintf("Expiration Time: %s", m.expirationTime.Format(time.RFC3339))
 		bodyArr = append(bodyArr, value)
 	}
 
-	if !isEmpty(m.NotBefore) {
-		value := fmt.Sprintf("Not Before: %s", *m.NotBefore)
+	if m.notBefore != nil {
+		value := fmt.Sprintf("Not Before: %s", m.notBefore.Format(time.RFC3339))
 		bodyArr = append(bodyArr, value)
 	}
 
-	if !isEmpty(m.RequestID) {
-		value := fmt.Sprintf("Request ID: %s", *m.RequestID)
+	if !isEmpty(m.requestID) {
+		value := fmt.Sprintf("Request ID: %s", *m.requestID)
 		bodyArr = append(bodyArr, value)
 	}
 
-	if len(m.Resources) > 0 {
-		resourcesArr := make([]string, len(m.Resources))
-		for i, v := range m.Resources {
+	if len(m.resources) > 0 {
+		resourcesArr := make([]string, len(m.resources))
+		for i, v := range m.resources {
 			resourcesArr[i] = fmt.Sprintf("- %s", v)
 		}
 

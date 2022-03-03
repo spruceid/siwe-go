@@ -1,0 +1,3 @@
+[submodule "siwe-js"]
+	path = siwe-js
+	url = https://github.com/spruceid/siwe
