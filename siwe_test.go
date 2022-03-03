@@ -23,17 +23,14 @@ const uri = "https://example.com"
 const version = "1"
 const statement = "Example statement for SIWE"
 
-var issuedAt = time.Now().UTC()
-var issuedAtStr = issuedAt.Format(time.RFC3339)
+var issuedAt = time.Now().UTC().Format(time.RFC3339)
 var nonce = GenerateNonce()
 
 const chainId = "1"
 
-var expirationTime = time.Now().UTC().Add(48 * time.Hour)
-var expirationTimeStr = expirationTime.Format(time.RFC3339)
+var expirationTime = time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
 
-var notBefore = time.Now().UTC().Add(-24 * time.Hour)
-var notBeforeStr = notBefore.Format(time.RFC3339)
+var notBefore = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 
 const requestId = "some-id"
 
@@ -43,9 +40,9 @@ var options = map[string]interface{}{
 	"statement":      statement,
 	"nonce":          nonce,
 	"chainId":        chainId,
-	"issuedAt":       issuedAtStr,
-	"expirationTime": expirationTimeStr,
-	"notBefore":      notBeforeStr,
+	"issuedAt":       issuedAt,
+	"expirationTime": expirationTime,
+	"notBefore":      notBefore,
 	"requestId":      requestId,
 	"resources":      resources,
 }
@@ -68,9 +65,9 @@ func compareMessage(t *testing.T, a, b *Message) {
 	assert.Equal(t, a.nonce, b.nonce, "expected %s, found %s", a.nonce, b.nonce)
 	assert.Equal(t, a.chainID, b.chainID, "expected %s, found %s", a.chainID, b.chainID)
 
-	assert.Equal(t, a.GetIssuedAtString(), b.GetIssuedAtString(), "expected %s, found %s", a.issuedAt, b.issuedAt)
-	assert.Equal(t, a.GetExpirationTimeStr(), b.GetExpirationTimeStr(), "expected %s, found %s", a.expirationTime, b.expirationTime)
-	assert.Equal(t, a.GetNotBeforeStr(), b.GetNotBeforeStr(), "expected %s, found %s", a.notBefore, b.notBefore)
+	assert.Equal(t, a.issuedAt, b.issuedAt, "expected %s, found %s", a.issuedAt, b.issuedAt)
+	assert.Equal(t, a.expirationTime, b.expirationTime, "expected %s, found %s", a.expirationTime, b.expirationTime)
+	assert.Equal(t, a.notBefore, b.notBefore, "expected %s, found %s", a.notBefore, b.notBefore)
 
 	assert.Equal(t, a.requestID, b.requestID, "expected %s, found %s", a.requestID, b.requestID)
 	assert.Equal(t, a.resources, b.resources, "expected %v, found %v", a.resources, b.resources)
@@ -87,9 +84,9 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, *message.nonce, nonce, "nonce should be %s", nonce)
 	assert.Equal(t, message.chainID, chainId, "chainId should be %s", chainId)
 
-	assert.Equal(t, message.GetIssuedAtString(), issuedAtStr, "issuedAt should be %v", issuedAt)
-	assert.Equal(t, *message.GetExpirationTimeStr(), expirationTimeStr, "expirationTime should be %s", expirationTime)
-	assert.Equal(t, *message.GetNotBeforeStr(), notBeforeStr, "notBefore should be %s", notBefore)
+	assert.Equal(t, message.issuedAt, issuedAt, "issuedAt should be %v", issuedAt)
+	assert.Equal(t, *message.expirationTime, expirationTime, "expirationTime should be %s", expirationTime)
+	assert.Equal(t, *message.notBefore, notBefore, "notBefore should be %s", notBefore)
 
 	assert.Equal(t, *message.requestID, requestId, "requestId should be %s", requestId)
 	assert.Equal(t, message.resources, resources, "resources should be %v", resources)
@@ -314,7 +311,7 @@ func validationPositive(t *testing.T, cases map[string]interface{}) {
 }
 
 func TestGlobalTestVector(t *testing.T) {
-	var files map[string]*os.File
+	files := make(map[string]*os.File, 4)
 	for test, filename := range map[string]string{
 		"parsing-negative":    "siwe-js/test/parsing_negative.json",
 		"parsing-positive":    "siwe-js/test/parsing_positive.json",

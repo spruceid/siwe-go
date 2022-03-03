@@ -46,9 +46,9 @@ type Message struct {
 	nonce     *string
 	chainID   string
 
-	issuedAt       time.Time
-	expirationTime *time.Time
-	notBefore      *time.Time
+	issuedAt       string
+	expirationTime *string
+	notBefore      *string
 
 	requestID *string
 	resources []string
@@ -77,56 +77,56 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		chainId = "1"
 	}
 
-	var issuedAt time.Time
+	var issuedAt string
 	if val, ok := options["issuedAt"]; ok {
 		switch val.(type) {
 		case time.Time:
-			issuedAt = val.(time.Time).UTC()
+			issuedAt = val.(time.Time).UTC().Format(time.RFC3339)
 		case string:
-			parsed, err := iso8601.ParseString(val.(string))
+			_, err := iso8601.ParseString(val.(string))
 			if err != nil {
-				return nil, &InvalidMessage{"Failed to parse `issuedAt`"}
+				return nil, &InvalidMessage{"Invalid format for field `issuedAt`"}
 			}
-			issuedAt = parsed
+			issuedAt = val.(string)
 		default:
-			return nil, &InvalidMessage{"`issuedAt` must be either a string or time.Time"}
+			return nil, &InvalidMessage{"`issuedAt` must be either an ISO8601 formatted string or time.Time"}
 		}
 	} else {
-		issuedAt = time.Now().UTC()
+		issuedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	var expirationTime *time.Time
+	var expirationTime *string
 	if val, ok := options["expirationTime"]; ok {
-		var value time.Time
+		var value string
 		switch val.(type) {
 		case time.Time:
-			value = val.(time.Time).UTC()
+			value = val.(time.Time).UTC().Format(time.RFC3339)
 		case string:
-			parsed, err := iso8601.ParseString(val.(string))
+			_, err := iso8601.ParseString(val.(string))
 			if err != nil {
-				return nil, &InvalidMessage{"Failed to parse `expirationTime`"}
+				return nil, &InvalidMessage{"Invalid string format for field `expirationTime`"}
 			}
-			value = parsed
+			value = val.(string)
 		default:
-			return nil, &InvalidMessage{"`expirationTime` must be either a string or time.Time"}
+			return nil, &InvalidMessage{"`expirationTime` must be either an ISO8601 formatted string or time.Time"}
 		}
 		expirationTime = &value
 	}
 
-	var notBefore *time.Time
+	var notBefore *string
 	if val, ok := options["notBefore"]; ok {
-		var value time.Time
+		var value string
 		switch val.(type) {
 		case time.Time:
-			value = val.(time.Time).UTC()
+			value = val.(time.Time).UTC().Format(time.RFC3339)
 		case string:
-			parsed, err := iso8601.ParseString(val.(string))
+			_, err := iso8601.ParseString(val.(string))
 			if err != nil {
-				return nil, &InvalidMessage{"Failed to parse `notBefore`"}
+				return nil, &InvalidMessage{"Invalid string format for field `notBefore`"}
 			}
-			value = parsed
+			value = val.(string)
 		default:
-			return nil, &InvalidMessage{"`notBefore` must be either a string or time.Time"}
+			return nil, &InvalidMessage{"`notBefore` must be either an ISO8601 formatted string or time.Time"}
 		}
 		notBefore = &value
 	}
@@ -202,15 +202,19 @@ func (m *Message) GetChainID() string {
 	return m.chainID
 }
 
-func (m *Message) GetIssuedAt() time.Time {
+func (m *Message) GetIssuedAt() string {
 	return m.issuedAt
 }
 
-func (m *Message) GetIssuedAtString() string {
-	return m.issuedAt.Format(time.RFC3339)
+func (m *Message) getExpirationTime() *time.Time {
+	if !isEmpty(m.expirationTime) {
+		ret, _ := iso8601.ParseString(*m.expirationTime)
+		return &ret
+	}
+	return nil
 }
 
-func (m *Message) GetExpirationTime() *time.Time {
+func (m *Message) GetExpirationTime() *string {
 	if m.expirationTime != nil {
 		ret := *m.expirationTime
 		return &ret
@@ -218,25 +222,17 @@ func (m *Message) GetExpirationTime() *time.Time {
 	return nil
 }
 
-func (m *Message) GetExpirationTimeStr() *string {
-	if m.expirationTime != nil {
-		ret := m.expirationTime.Format(time.RFC3339)
+func (m *Message) getNotBefore() *time.Time {
+	if !isEmpty(m.notBefore) {
+		ret, _ := iso8601.ParseString(*m.notBefore)
 		return &ret
 	}
 	return nil
 }
 
-func (m *Message) GetNotBefore() *time.Time {
+func (m *Message) GetNotBefore() *string {
 	if m.notBefore != nil {
 		ret := *m.notBefore
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetNotBeforeStr() *string {
-	if m.notBefore != nil {
-		ret := m.notBefore.Format(time.RFC3339)
 		return &ret
 	}
 	return nil
@@ -355,13 +351,13 @@ func (m *Message) ValidNow() (bool, error) {
 
 func (m *Message) ValidAt(when time.Time) (bool, error) {
 	if m.expirationTime != nil {
-		if time.Now().UTC().After(*m.expirationTime) {
+		if time.Now().UTC().After(*m.getExpirationTime()) {
 			return false, &ExpiredMessage{"Message expired"}
 		}
 	}
 
 	if m.notBefore != nil {
-		if time.Now().UTC().Before(*m.notBefore) {
+		if time.Now().UTC().Before(*m.getNotBefore()) {
 			return false, &InvalidMessage{"Message not yet valid"}
 		}
 	}
@@ -429,17 +425,17 @@ func (m *Message) PrepareMessage() string {
 	version := fmt.Sprintf("Version: %s", m.version)
 	chainId := fmt.Sprintf("Chain ID: %s", m.chainID)
 	nonce := fmt.Sprintf("Nonce: %s", *m.nonce)
-	issuedAt := fmt.Sprintf("Issued At: %s", m.issuedAt.Format(time.RFC3339))
+	issuedAt := fmt.Sprintf("Issued At: %s", m.issuedAt)
 
 	bodyArr := []string{uri, version, chainId, nonce, issuedAt}
 
-	if m.expirationTime != nil {
-		value := fmt.Sprintf("Expiration Time: %s", m.expirationTime.Format(time.RFC3339))
+	if !isEmpty(m.expirationTime) {
+		value := fmt.Sprintf("Expiration Time: %s", *m.expirationTime)
 		bodyArr = append(bodyArr, value)
 	}
 
-	if m.notBefore != nil {
-		value := fmt.Sprintf("Not Before: %s", m.notBefore.Format(time.RFC3339))
+	if !isEmpty(m.notBefore) {
+		value := fmt.Sprintf("Not Before: %s", *m.notBefore)
 		bodyArr = append(bodyArr, value)
 	}
 
