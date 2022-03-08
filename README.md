@@ -19,8 +19,14 @@ SIWE exposes a Message struct which implements EIP-4361.
 Parsing is done via the `siwe.ParseMessage` function:
 
 ```go
-message := siwe.ParseMessage(messageStr)
+var message *siwe.Message
+var err error
+
+message, err = siwe.ParseMessage(messageStr)
 ```
+
+The function will return a nil pointer and an error if
+there was an issue while parsing.
 
 ### Verifying and Authenticating a SIWE Message
 
@@ -39,6 +45,8 @@ The time constraints (expiry and not-before) can also be
 validated, at current or particular times:
 
 ```go
+var message *siwe.Message
+
 if message.ValidNow() {
   // ...
 }
