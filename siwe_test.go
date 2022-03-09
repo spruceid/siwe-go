@@ -26,7 +26,7 @@ const statement = "Example statement for SIWE"
 var issuedAt = time.Now().UTC().Format(time.RFC3339)
 var nonce = GenerateNonce()
 
-const chainId = "1"
+const chainId = 1
 
 var expirationTime = time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
 
@@ -73,7 +73,6 @@ func compareMessage(t *testing.T, a, b *Message) {
 	assert.Equal(t, a.resources, b.resources, "expected %v, found %v", a.resources, b.resources)
 }
 
-// TODO: timestamps format, EIP55, expirationTime after issuedAt, expirationTime after notBefore
 func TestCreate(t *testing.T) {
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
 	assert.Equal(t, message.address, address, "address should be %s", address)
@@ -135,7 +134,7 @@ func TestPrepareParseRequired(t *testing.T) {
 }
 
 func TestValidateEmpty(t *testing.T) {
-	_, err := message.Verify("")
+	_, err := message.Verify("", nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signature cannot be empty"}, err)
@@ -167,7 +166,7 @@ func TestValidateNotBefore(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidMessage{"Message not yet valid"}, err)
@@ -188,7 +187,7 @@ func TestValidateExpirationTime(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &ExpiredMessage{"Message expired"}, err)
@@ -200,15 +199,14 @@ func TestValidate(t *testing.T) {
 
 	message, err := InitMessage(domain, address, uri, version, options)
 	assert.Nil(t, err)
-	prepare := message.PrepareMessage()
 
-	sign := signHash([]byte(prepare))
-	signature, err := crypto.Sign(sign.Bytes(), privateKey)
+	hash := message.eip191Hash()
+	signature, err := crypto.Sign(hash.Bytes(), privateKey)
 	signature[64] += 27
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
 
 	assert.Nil(t, err)
 }
@@ -219,17 +217,16 @@ func TestValidateTampered(t *testing.T) {
 
 	message, err := InitMessage(domain, address, uri, version, options)
 	assert.Nil(t, err)
-	prepare := message.PrepareMessage()
 
-	sign := signHash([]byte(prepare))
-	signature, err := crypto.Sign(sign.Bytes(), privateKey)
+	hash := message.eip191Hash()
+	signature, err := crypto.Sign(hash.Bytes(), privateKey)
 	signature[64] += 27
 
 	assert.Nil(t, err)
 
 	message, err = InitMessage(domain, otherAddress, uri, version, options)
 	assert.Nil(t, err)
-	_, err = message.Verify(hexutil.Encode(signature))
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signer address must match message address"}, err)
@@ -271,6 +268,10 @@ func parsingPositive(t *testing.T, cases map[string]interface{}) {
 		if val, ok := parsed["nonce"]; ok {
 			assertCase(t, fields, val.(string), "nonce")
 		}
+
+		constructed, err := ParseMessage(message)
+		assert.Nil(t, err)
+		assert.Equal(t, constructed.String(), message)
 	}
 }
 
@@ -286,7 +287,7 @@ func validationNegative(t *testing.T, cases map[string]interface{}) {
 		)
 		assert.Nil(t, err)
 
-		_, err = message.Verify(data["signature"].(string))
+		_, err = message.Verify(data["signature"].(string), nil, nil)
 
 		assert.Error(t, err, name)
 	}
@@ -304,7 +305,7 @@ func validationPositive(t *testing.T, cases map[string]interface{}) {
 		)
 		assert.Nil(t, err)
 
-		_, err = message.Verify(data["signature"].(string))
+		_, err = message.Verify(data["signature"].(string), nil, nil)
 
 		assert.Nil(t, err, name)
 	}

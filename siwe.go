@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,14 +16,9 @@ import (
 )
 
 type MalformedMessage struct{ string }
-type ParsingFailed struct{ string }
 type ExpiredMessage struct{ string }
 type InvalidMessage struct{ string }
 type InvalidSignature struct{ string }
-
-func (m *ParsingFailed) Error() string {
-	return "Expired Message"
-}
 
 func (m *ExpiredMessage) Error() string {
 	return "Expired Message"
@@ -44,7 +40,7 @@ type Message struct {
 
 	statement *string
 	nonce     *string
-	chainID   string
+	chainID   int
 
 	issuedAt       string
 	expirationTime *string
@@ -52,6 +48,31 @@ type Message struct {
 
 	requestID *string
 	resources []string
+}
+
+func parseTimestamp(fields map[string]interface{}, key string) (*string, error) {
+	var value string
+
+	if val, ok := fields[key]; ok {
+		switch val.(type) {
+		case time.Time:
+			value = val.(time.Time).UTC().Format(time.RFC3339)
+		case string:
+			_, err := iso8601.ParseString(val.(string))
+			if err != nil {
+				return nil, &InvalidMessage{fmt.Sprintf("Invalid format for field `%s`", key)}
+			}
+			value = val.(string)
+		default:
+			return nil, &InvalidMessage{fmt.Sprintf("`%s` must be either an ISO8601 formatted string or time.Time", key)}
+		}
+	}
+
+	if value == "" {
+		return nil, nil
+	}
+
+	return &value, nil
 }
 
 func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
@@ -70,65 +91,54 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		nonce = &value
 	}
 
-	var chainId string
+	var chainId int
 	if val, ok := options["chainId"]; ok {
-		chainId = val.(string)
+		switch val.(type) {
+		case int:
+			chainId = val.(int)
+		case string:
+			parsed, err := strconv.Atoi(val.(string))
+			if err != nil {
+				return nil, &InvalidMessage{"Invalid format for field `chainId`, must be an integer"}
+			}
+			chainId = parsed
+		default:
+			return nil, &InvalidMessage{"`chainId` must be a string or a integer"}
+		}
 	} else {
-		chainId = "1"
+		chainId = 1
 	}
 
 	var issuedAt string
-	if val, ok := options["issuedAt"]; ok {
-		switch val.(type) {
-		case time.Time:
-			issuedAt = val.(time.Time).UTC().Format(time.RFC3339)
-		case string:
-			_, err := iso8601.ParseString(val.(string))
-			if err != nil {
-				return nil, &InvalidMessage{"Invalid format for field `issuedAt`"}
-			}
-			issuedAt = val.(string)
-		default:
-			return nil, &InvalidMessage{"`issuedAt` must be either an ISO8601 formatted string or time.Time"}
-		}
+	timestamp, err := parseTimestamp(options, "issuedAt")
+	if err != nil {
+		return nil, err
+	}
+
+	if timestamp != nil {
+		issuedAt = *timestamp
 	} else {
 		issuedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 
 	var expirationTime *string
-	if val, ok := options["expirationTime"]; ok {
-		var value string
-		switch val.(type) {
-		case time.Time:
-			value = val.(time.Time).UTC().Format(time.RFC3339)
-		case string:
-			_, err := iso8601.ParseString(val.(string))
-			if err != nil {
-				return nil, &InvalidMessage{"Invalid string format for field `expirationTime`"}
-			}
-			value = val.(string)
-		default:
-			return nil, &InvalidMessage{"`expirationTime` must be either an ISO8601 formatted string or time.Time"}
-		}
-		expirationTime = &value
+	timestamp, err = parseTimestamp(options, "expirationTime")
+	if err != nil {
+		return nil, err
+	}
+
+	if timestamp != nil {
+		expirationTime = timestamp
 	}
 
 	var notBefore *string
-	if val, ok := options["notBefore"]; ok {
-		var value string
-		switch val.(type) {
-		case time.Time:
-			value = val.(time.Time).UTC().Format(time.RFC3339)
-		case string:
-			_, err := iso8601.ParseString(val.(string))
-			if err != nil {
-				return nil, &InvalidMessage{"Invalid string format for field `notBefore`"}
-			}
-			value = val.(string)
-		default:
-			return nil, &InvalidMessage{"`notBefore` must be either an ISO8601 formatted string or time.Time"}
-		}
-		notBefore = &value
+	timestamp, err = parseTimestamp(options, "notBefore")
+	if err != nil {
+		return nil, err
+	}
+
+	if timestamp != nil {
+		notBefore = timestamp
 	}
 
 	var requestID *string
@@ -198,7 +208,7 @@ func (m *Message) GetNonce() *string {
 	return nil
 }
 
-func (m *Message) GetChainID() string {
+func (m *Message) GetChainID() int {
 	return m.chainID
 }
 
@@ -296,7 +306,7 @@ func parseMessage(message string) (map[string]interface{}, error) {
 	match := _SIWE_MESSAGE.FindStringSubmatch(message)
 
 	if match == nil {
-		return nil, &ParsingFailed{"Message could not be parsed"}
+		return nil, &InvalidMessage{"Message could not be parsed"}
 	}
 
 	result := make(map[string]interface{})
@@ -309,7 +319,7 @@ func parseMessage(message string) (map[string]interface{}, error) {
 	originalAddress := result["address"].(string)
 	parsedAddress := common.HexToAddress(originalAddress)
 	if originalAddress != parsedAddress.String() {
-		return nil, &ParsingFailed{"Address must be in EIP-55 format"}
+		return nil, &InvalidMessage{"Address must be in EIP-55 format"}
 	}
 
 	if val, ok := result["resources"]; ok {
@@ -340,7 +350,9 @@ func ParseMessage(message string) (*Message, error) {
 	return parsed, nil
 }
 
-func signHash(data []byte) common.Hash {
+func (m *Message) eip191Hash() common.Hash {
+	// Ref: https://stackoverflow.com/questions/49085737/geth-ecrecover-invalid-signature-recovery-id
+	data := []byte(m.PrepareMessage())
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
 	return crypto.Keccak256Hash([]byte(msg))
 }
@@ -370,10 +382,6 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 		return nil, &InvalidSignature{"Signature cannot be empty"}
 	}
 
-	// Ref: https://stackoverflow.com/questions/49085737/geth-ecrecover-invalid-signature-recovery-id
-	data := m.PrepareMessage()
-	hash := signHash([]byte(data))
-
 	sigBytes, err := hexutil.Decode(signature)
 	if err != nil {
 		return nil, &InvalidSignature{"Failed to decode signature"}
@@ -381,11 +389,11 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 
 	// Ref:https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L442
 	if sigBytes[64] != 27 && sigBytes[64] != 28 {
-		return nil, &InvalidSignature{"Invalid signature bytes"}
+		return nil, &InvalidSignature{"Invalid signature recovery byte"}
 	}
 	sigBytes[64] -= 27
 
-	pkey, err := crypto.SigToPub(hash.Bytes(), sigBytes)
+	pkey, err := crypto.SigToPub(m.eip191Hash().Bytes(), sigBytes)
 	if err != nil {
 		return nil, &InvalidSignature{"Failed to recover public key from signature"}
 	}
@@ -399,14 +407,28 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	return pkey, nil
 }
 
-func (m *Message) Verify(signature string) (*ecdsa.PublicKey, error) {
-	_, err := m.ValidNow()
+func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) (*ecdsa.PublicKey, error) {
+	var err error
+
+	if timestamp != nil {
+		_, err = m.ValidAt(*timestamp)
+	} else {
+		_, err = m.ValidNow()
+	}
 
 	if err != nil {
 		return nil, err
 	}
 
+	if nonce != nil {
+
+	}
+
 	return m.VerifyEIP191(signature)
+}
+
+func (m *Message) String() string {
+	return m.PrepareMessage()
 }
 
 func (m *Message) PrepareMessage() string {
@@ -423,7 +445,7 @@ func (m *Message) PrepareMessage() string {
 
 	uri := fmt.Sprintf("URI: %s", m.uri)
 	version := fmt.Sprintf("Version: %s", m.version)
-	chainId := fmt.Sprintf("Chain ID: %s", m.chainID)
+	chainId := fmt.Sprintf("Chain ID: %d", m.chainID)
 	nonce := fmt.Sprintf("Nonce: %s", *m.nonce)
 	issuedAt := fmt.Sprintf("Issued At: %s", m.issuedAt)
 
