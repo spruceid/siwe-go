@@ -39,7 +39,7 @@ type Message struct {
 	version string
 
 	statement *string
-	nonce     *string
+	nonce     string
 	chainID   int
 
 	issuedAt       string
@@ -82,13 +82,11 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		statement = &value
 	}
 
-	var nonce *string
+	var nonce string
 	if val, ok := options["nonce"]; ok {
-		value := val.(string)
-		nonce = &value
+		nonce = val.(string)
 	} else {
-		value := GenerateNonce()
-		nonce = &value
+		nonce = GenerateNonce()
 	}
 
 	var chainId int
@@ -200,12 +198,8 @@ func (m *Message) GetStatement() *string {
 	return nil
 }
 
-func (m *Message) GetNonce() *string {
-	if m.nonce != nil {
-		ret := *m.nonce
-		return &ret
-	}
-	return nil
+func (m *Message) GetNonce() string {
+	return m.nonce
 }
 
 func (m *Message) GetChainID() int {
@@ -352,7 +346,7 @@ func ParseMessage(message string) (*Message, error) {
 
 func (m *Message) eip191Hash() common.Hash {
 	// Ref: https://stackoverflow.com/questions/49085737/geth-ecrecover-invalid-signature-recovery-id
-	data := []byte(m.PrepareMessage())
+	data := []byte(m.String())
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
 	return crypto.Keccak256Hash([]byte(msg))
 }
@@ -428,10 +422,10 @@ func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) 
 }
 
 func (m *Message) String() string {
-	return m.PrepareMessage()
+	return m.prepareMessage()
 }
 
-func (m *Message) PrepareMessage() string {
+func (m *Message) prepareMessage() string {
 	greeting := fmt.Sprintf("%s wants you to sign in with your Ethereum account:", m.domain)
 	headerArr := []string{greeting, m.address.String()}
 
@@ -446,7 +440,7 @@ func (m *Message) PrepareMessage() string {
 	uri := fmt.Sprintf("URI: %s", m.uri)
 	version := fmt.Sprintf("Version: %s", m.version)
 	chainId := fmt.Sprintf("Chain ID: %d", m.chainID)
-	nonce := fmt.Sprintf("Nonce: %s", *m.nonce)
+	nonce := fmt.Sprintf("Nonce: %s", m.nonce)
 	issuedAt := fmt.Sprintf("Issued At: %s", m.issuedAt)
 
 	bodyArr := []string{uri, version, chainId, nonce, issuedAt}

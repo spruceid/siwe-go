@@ -80,7 +80,7 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, message.version, version, "version should be %s", version)
 
 	assert.Equal(t, *message.statement, statement, "statement should be %s", statement)
-	assert.Equal(t, *message.nonce, nonce, "nonce should be %s", nonce)
+	assert.Equal(t, message.nonce, nonce, "nonce should be %s", nonce)
 	assert.Equal(t, message.chainID, chainId, "chainId should be %s", chainId)
 
 	assert.Equal(t, message.issuedAt, issuedAt, "issuedAt should be %v", issuedAt)
@@ -113,7 +113,7 @@ func TestCreateRequired(t *testing.T) {
 }
 
 func TestPrepareParse(t *testing.T) {
-	prepare := message.PrepareMessage()
+	prepare := message.String()
 	parse, err := ParseMessage(prepare)
 
 	assert.Nil(t, err)
@@ -125,7 +125,7 @@ func TestPrepareParseRequired(t *testing.T) {
 	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{})
 	assert.Nil(t, err)
 
-	prepare := message.PrepareMessage()
+	prepare := message.String()
 	parse, err := ParseMessage(prepare)
 
 	assert.Nil(t, err)
@@ -159,7 +159,7 @@ func TestValidateNotBefore(t *testing.T) {
 		"notBefore": time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
-	prepare := message.PrepareMessage()
+	prepare := message.String()
 
 	hash := crypto.Keccak256Hash([]byte(prepare))
 	signature, err := crypto.Sign(hash.Bytes(), privateKey)
@@ -180,7 +180,7 @@ func TestValidateExpirationTime(t *testing.T) {
 		"expirationTime": time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
-	prepare := message.PrepareMessage()
+	prepare := message.String()
 
 	hash := crypto.Keccak256Hash([]byte(prepare))
 	signature, err := crypto.Sign(hash.Bytes(), privateKey)
