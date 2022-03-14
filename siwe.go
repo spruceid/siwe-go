@@ -92,7 +92,7 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	if val, ok := options["nonce"]; ok {
 		nonce = val.(string)
 	} else {
-		nonce = GenerateNonce()
+		return nil, &InvalidMessage{"Missing `nonce` property"}
 	}
 
 	var chainId int
