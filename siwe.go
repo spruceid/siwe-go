@@ -3,6 +3,7 @@ package siwe
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -35,7 +36,7 @@ func (m *InvalidSignature) Error() string {
 type Message struct {
 	domain  string
 	address common.Address
-	uri     string
+	uri     url.URL
 	version string
 
 	statement *string
@@ -76,6 +77,11 @@ func parseTimestamp(fields map[string]interface{}, key string) (*string, error) 
 }
 
 func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
+	validateURI, err := url.Parse(uri)
+	if err != nil {
+		return nil, &InvalidMessage{"Invalid format for field `uri`"}
+	}
+
 	var statement *string
 	if val, ok := options["statement"]; ok {
 		value := val.(string)
@@ -158,7 +164,7 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	return &Message{
 		domain:  domain,
 		address: common.HexToAddress(address),
-		uri:     uri,
+		uri:     *validateURI,
 		version: version,
 
 		statement: statement,
@@ -182,7 +188,7 @@ func (m *Message) GetAddress() common.Address {
 	return m.address
 }
 
-func (m *Message) GetURI() string {
+func (m *Message) GetURI() url.URL {
 	return m.uri
 }
 
@@ -415,7 +421,9 @@ func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) 
 	}
 
 	if nonce != nil {
-
+		if m.GetNonce() == *nonce {
+			return nil, &InvalidSignature{"Message nonce doesn't match"}
+		}
 	}
 
 	return m.VerifyEIP191(signature)
@@ -437,7 +445,7 @@ func (m *Message) prepareMessage() string {
 
 	header := strings.Join(headerArr, "\n")
 
-	uri := fmt.Sprintf("URI: %s", m.uri)
+	uri := fmt.Sprintf("URI: %s", m.uri.String())
 	version := fmt.Sprintf("Version: %s", m.version)
 	chainId := fmt.Sprintf("Chain ID: %d", m.chainID)
 	nonce := fmt.Sprintf("Nonce: %s", m.nonce)

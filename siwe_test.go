@@ -58,7 +58,7 @@ var message, _ = InitMessage(
 func compareMessage(t *testing.T, a, b *Message) {
 	assert.Equal(t, a.domain, b.domain, "expected %s, found %s", a.domain, b.domain)
 	assert.Equal(t, a.address, b.address, "expected %s, found %s", a.address, b.address)
-	assert.Equal(t, a.uri, b.uri, "expected %s, found %s", a.uri, b.uri)
+	assert.Equal(t, a.uri.String(), b.uri.String(), "expected %s, found %s", a.uri, b.uri)
 	assert.Equal(t, a.version, b.version, "expected %s, found %s", a.version, b.version)
 
 	assert.Equal(t, a.statement, b.statement, "expected %s, found %s", a.statement, b.statement)
@@ -76,7 +76,7 @@ func compareMessage(t *testing.T, a, b *Message) {
 func TestCreate(t *testing.T) {
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
 	assert.Equal(t, message.address, address, "address should be %s", address)
-	assert.Equal(t, message.uri, uri, "uri should be %s", uri)
+	assert.Equal(t, message.uri.String(), uri, "uri should be %s", uri)
 	assert.Equal(t, message.version, version, "version should be %s", version)
 
 	assert.Equal(t, *message.statement, statement, "statement should be %s", statement)
@@ -97,7 +97,7 @@ func TestCreateRequired(t *testing.T) {
 
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
 	assert.Equal(t, message.address, address, "address should be %s", address)
-	assert.Equal(t, message.uri, uri, "uri should be %s", uri)
+	assert.Equal(t, message.uri.String(), uri, "uri should be %s", uri)
 	assert.Equal(t, message.version, version, "version should be %s", version)
 
 	assert.Nil(t, message.statement, "statement should be nil")
