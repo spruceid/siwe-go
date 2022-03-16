@@ -71,10 +71,10 @@ publicKey, err = message.Verify(signature)
 ### Serialization of a SIWE Message
 
 Message instances can also be serialized as their EIP-4361
-string representations via the `PrepareMessage` method:
+string representations via the `String` method:
 
 ```go
-fmt.Printf("%s", message.PrepareMessage())
+fmt.Printf("%s", message.String())
 ```
 
 ## Signing Messages from Go code
