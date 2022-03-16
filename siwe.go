@@ -4,77 +4,14 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dchest/uniuri"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/relvacode/iso8601"
 )
-
-type MalformedMessage struct{ string }
-type ExpiredMessage struct{ string }
-type InvalidMessage struct{ string }
-type InvalidSignature struct{ string }
-
-func (m *ExpiredMessage) Error() string {
-	return "Expired Message"
-}
-
-func (m *InvalidMessage) Error() string {
-	return "Invalid Message"
-}
-
-func (m *InvalidSignature) Error() string {
-	return fmt.Sprintf("Invalid Signature: %s", m.string)
-}
-
-type Message struct {
-	domain  string
-	address common.Address
-	uri     url.URL
-	version string
-
-	statement *string
-	nonce     string
-	chainID   int
-
-	issuedAt       string
-	expirationTime *string
-	notBefore      *string
-
-	requestID *string
-	resources []string
-}
-
-func parseTimestamp(fields map[string]interface{}, key string) (*string, error) {
-	var value string
-
-	if val, ok := fields[key]; ok {
-		switch val.(type) {
-		case time.Time:
-			value = val.(time.Time).UTC().Format(time.RFC3339)
-		case string:
-			_, err := iso8601.ParseString(val.(string))
-			if err != nil {
-				return nil, &InvalidMessage{fmt.Sprintf("Invalid format for field `%s`", key)}
-			}
-			value = val.(string)
-		default:
-			return nil, &InvalidMessage{fmt.Sprintf("`%s` must be either an ISO8601 formatted string or time.Time", key)}
-		}
-	}
-
-	if value == "" {
-		return nil, nil
-	}
-
-	return &value, nil
-}
 
 func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
 	validateURI, err := url.Parse(uri)
@@ -89,10 +26,10 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	}
 
 	var nonce string
-	if val, ok := options["nonce"]; ok {
-		nonce = val.(string)
+	if val, ok := isStringAndNotEmpty(options, "nonce"); ok {
+		nonce = *val
 	} else {
-		return nil, &InvalidMessage{"Missing `nonce` property"}
+		return nil, &InvalidMessage{"Missing or empty `nonce` property"}
 	}
 
 	var chainId int
@@ -146,9 +83,8 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	}
 
 	var requestID *string
-	if val, ok := options["requestId"]; ok {
-		value := val.(string)
-		requestID = &value
+	if val, ok := isStringAndNotEmpty(options, "requestId"); ok {
+		requestID = val
 	}
 
 	var resources []string
@@ -179,128 +115,6 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		resources: resources,
 	}, nil
 }
-
-func (m *Message) GetDomain() string {
-	return m.domain
-}
-
-func (m *Message) GetAddress() common.Address {
-	return m.address
-}
-
-func (m *Message) GetURI() url.URL {
-	return m.uri
-}
-
-func (m *Message) GetVersion() string {
-	return m.version
-}
-
-func (m *Message) GetStatement() *string {
-	if m.statement != nil {
-		ret := *m.statement
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetNonce() string {
-	return m.nonce
-}
-
-func (m *Message) GetChainID() int {
-	return m.chainID
-}
-
-func (m *Message) GetIssuedAt() string {
-	return m.issuedAt
-}
-
-func (m *Message) getExpirationTime() *time.Time {
-	if !isEmpty(m.expirationTime) {
-		ret, _ := iso8601.ParseString(*m.expirationTime)
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetExpirationTime() *string {
-	if m.expirationTime != nil {
-		ret := *m.expirationTime
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) getNotBefore() *time.Time {
-	if !isEmpty(m.notBefore) {
-		ret, _ := iso8601.ParseString(*m.notBefore)
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetNotBefore() *string {
-	if m.notBefore != nil {
-		ret := *m.notBefore
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetRequestID() *string {
-	if m.requestID != nil {
-		ret := *m.requestID
-		return &ret
-	}
-	return nil
-}
-
-func (m *Message) GetResources() []string {
-	return m.resources
-}
-
-func GenerateNonce() string {
-	return uniuri.NewLen(16)
-}
-
-func isEmpty(str *string) bool {
-	return str == nil || len(strings.TrimSpace(*str)) == 0
-}
-
-const _SIWE_DOMAIN = "^(?P<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
-const _SIWE_ADDRESS = "(?P<address>0x[a-zA-Z0-9]{40})\\n\\n"
-const _SIWE_STATEMENT = "((?P<statement>[^\\n]+)\\n)?\\n"
-const _SIWE_URI = "(([^:?#]+):)?(([^?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))"
-
-var _SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", _SIWE_URI)
-
-const _SIWE_VERSION = "Version: (?P<version>1)\\n"
-const _SIWE_CHAIN_ID = "Chain ID: (?P<chainId>[0-9]+)\\n"
-const _SIWE_NONCE = "Nonce: (?P<nonce>[a-zA-Z0-9]{8,})\\n"
-const _SIWE_DATETIME = "([0-9]+)-(0[1-9]|1[012])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\\.[0-9]+)?(([Zz])|([\\+|\\-]([01][0-9]|2[0-3]):[0-5][0-9]))"
-
-var _SIWE_ISSUED_AT = fmt.Sprintf("Issued At: (?P<issuedAt>%s)", _SIWE_DATETIME)
-var _SIWE_EXPIRATION_TIME = fmt.Sprintf("(\\nExpiration Time: (?P<expirationTime>%s))?", _SIWE_DATETIME)
-var _SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?P<notBefore>%s))?", _SIWE_DATETIME)
-
-const _SIWE_REQUEST_ID = "(\\nRequest ID: (?P<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
-
-var _SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s?)+))?$", _SIWE_URI)
-
-var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
-	_SIWE_DOMAIN,
-	_SIWE_ADDRESS,
-	_SIWE_STATEMENT,
-	_SIWE_URI_LINE,
-	_SIWE_VERSION,
-	_SIWE_CHAIN_ID,
-	_SIWE_NONCE,
-	_SIWE_ISSUED_AT,
-	_SIWE_EXPIRATION_TIME,
-	_SIWE_NOT_BEFORE,
-	_SIWE_REQUEST_ID,
-	_SIWE_RESOURCES))
 
 func parseMessage(message string) (map[string]interface{}, error) {
 	match := _SIWE_MESSAGE.FindStringSubmatch(message)
@@ -429,10 +243,6 @@ func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) 
 	return m.VerifyEIP191(signature)
 }
 
-func (m *Message) String() string {
-	return m.prepareMessage()
-}
-
 func (m *Message) prepareMessage() string {
 	greeting := fmt.Sprintf("%s wants you to sign in with your Ethereum account:", m.domain)
 	headerArr := []string{greeting, m.address.String()}
@@ -483,4 +293,8 @@ func (m *Message) prepareMessage() string {
 	body := strings.Join(bodyArr, "\n")
 
 	return strings.Join([]string{header, body}, "\n")
+}
+
+func (m *Message) String() string {
+	return m.prepareMessage()
 }

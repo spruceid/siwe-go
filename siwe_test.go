@@ -92,7 +92,9 @@ func TestCreate(t *testing.T) {
 }
 
 func TestCreateRequired(t *testing.T) {
-	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{})
+	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
 	assert.Nil(t, err)
 
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
@@ -122,7 +124,9 @@ func TestPrepareParse(t *testing.T) {
 }
 
 func TestPrepareParseRequired(t *testing.T) {
-	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{})
+	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
 	assert.Nil(t, err)
 
 	prepare := message.String()
@@ -156,6 +160,7 @@ func TestValidateNotBefore(t *testing.T) {
 	privateKey, address := createWallet(t)
 
 	message, err := InitMessage(domain, address, uri, version, map[string]interface{}{
+		"nonce":     GenerateNonce(),
 		"notBefore": time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
@@ -177,6 +182,7 @@ func TestValidateExpirationTime(t *testing.T) {
 	privateKey, address := createWallet(t)
 
 	message, err := InitMessage(domain, address, uri, version, map[string]interface{}{
+		"nonce":          GenerateNonce(),
 		"expirationTime": time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
