@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -239,7 +240,7 @@ func TestValidateTampered(t *testing.T) {
 	}
 }
 
-func assertCase(t *testing.T, fields map[string]interface{}, parsed string, key string) {
+func assertCase(t *testing.T, fields map[string]interface{}, parsed interface{}, key string) {
 	if field, ok := fields[key]; ok {
 		assert.Equal(t, field, parsed, "%s should be %s", key, field)
 	}
@@ -264,7 +265,11 @@ func parsingPositive(t *testing.T, cases map[string]interface{}) {
 		assertCase(t, fields, parsed["address"].(string), "address")
 		assertCase(t, fields, parsed["uri"].(string), "uri")
 		assertCase(t, fields, parsed["version"].(string), "version")
-		assertCase(t, fields, parsed["chainId"].(string), "chainId")
+
+		parsedChainId, _ := strconv.Atoi(parsed["chainId"].(string))
+		expectedChainId := int(fields["chainId"].(float64))
+		assert.Equal(t, expectedChainId, parsedChainId, "chainId should be %s", expectedChainId)
+
 		assertCase(t, fields, parsed["issuedAt"].(string), "issuedAt")
 
 		if val, ok := parsed["statement"]; ok {

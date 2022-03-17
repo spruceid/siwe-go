@@ -35,6 +35,8 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	var chainId int
 	if val, ok := options["chainId"]; ok {
 		switch val.(type) {
+		case float64:
+			chainId = int(val.(float64))
 		case int:
 			chainId = val.(int)
 		case string:
