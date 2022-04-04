@@ -4,13 +4,16 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/relvacode/iso8601"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -34,7 +37,18 @@ var notBefore = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 
 const requestId = "some-id"
 
-var resources = []string{"https://example.com/resources/1", "https://example.com/resources/2"}
+var resourcesStr = []string{"https://example.com/resources/1", "https://example.com/resources/2"}
+
+func parsedResources() []url.URL {
+	parsed := make([]url.URL, len(resourcesStr))
+	for i, resource := range resourcesStr {
+		url, _ := url.Parse(resource)
+		parsed[i] = *url
+	}
+	return parsed
+}
+
+var resources = parsedResources()
 
 var options = map[string]interface{}{
 	"statement":      statement,
@@ -74,6 +88,15 @@ func compareMessage(t *testing.T, a, b *Message) {
 }
 
 func TestCreate(t *testing.T) {
+	message, err := InitMessage(
+		domain,
+		addressStr,
+		uri,
+		version,
+		options,
+	)
+	assert.Nil(t, err)
+
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
 	assert.Equal(t, message.address, address, "address should be %s", address)
 	assert.Equal(t, message.uri.String(), uri, "uri should be %s", uri)
@@ -114,6 +137,30 @@ func TestCreateRequired(t *testing.T) {
 	assert.Len(t, message.resources, 0, "resources should be empty")
 }
 
+func TestCreateEmpty(t *testing.T) {
+	var err error
+
+	_, err = InitMessage("", addressStr, uri, version, map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
+	assert.Error(t, err)
+
+	_, err = InitMessage(domain, "", uri, version, map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
+	assert.Error(t, err)
+
+	_, err = InitMessage(domain, addressStr, "", version, map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
+	assert.Error(t, err)
+
+	_, err = InitMessage(domain, addressStr, uri, "", map[string]interface{}{
+		"nonce": GenerateNonce(),
+	})
+	assert.Error(t, err)
+}
+
 func TestPrepareParse(t *testing.T) {
 	prepare := message.String()
 	parse, err := ParseMessage(prepare)
@@ -138,7 +185,7 @@ func TestPrepareParseRequired(t *testing.T) {
 }
 
 func TestValidateEmpty(t *testing.T) {
-	_, err := message.Verify("", nil, nil)
+	_, err := message.Verify("", nil, nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signature cannot be empty"}, err)
@@ -171,7 +218,7 @@ func TestValidateNotBefore(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidMessage{"Message not yet valid"}, err)
@@ -193,7 +240,7 @@ func TestValidateExpirationTime(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &ExpiredMessage{"Message expired"}, err)
@@ -212,7 +259,7 @@ func TestValidate(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil, nil)
 
 	assert.Nil(t, err)
 }
@@ -232,14 +279,14 @@ func TestValidateTampered(t *testing.T) {
 
 	message, err = InitMessage(domain, otherAddress, uri, version, options)
 	assert.Nil(t, err)
-	_, err = message.Verify(hexutil.Encode(signature), nil, nil)
+	_, err = message.Verify(hexutil.Encode(signature), nil, nil, nil)
 
 	if assert.Error(t, err) {
 		assert.Equal(t, &InvalidSignature{"Signer address must match message address"}, err)
 	}
 }
 
-func assertCase(t *testing.T, fields map[string]interface{}, parsed string, key string) {
+func assertCase(t *testing.T, fields map[string]interface{}, parsed interface{}, key string) {
 	if field, ok := fields[key]; ok {
 		assert.Equal(t, field, parsed, "%s should be %s", key, field)
 	}
@@ -264,7 +311,11 @@ func parsingPositive(t *testing.T, cases map[string]interface{}) {
 		assertCase(t, fields, parsed["address"].(string), "address")
 		assertCase(t, fields, parsed["uri"].(string), "uri")
 		assertCase(t, fields, parsed["version"].(string), "version")
-		assertCase(t, fields, parsed["chainId"].(string), "chainId")
+
+		parsedChainId, _ := strconv.Atoi(parsed["chainId"].(string))
+		expectedChainId := int(fields["chainId"].(float64))
+		assert.Equal(t, expectedChainId, parsedChainId, "chainId should be %s", expectedChainId)
+
 		assertCase(t, fields, parsed["issuedAt"].(string), "issuedAt")
 
 		if val, ok := parsed["statement"]; ok {
@@ -281,7 +332,7 @@ func parsingPositive(t *testing.T, cases map[string]interface{}) {
 	}
 }
 
-func validationNegative(t *testing.T, cases map[string]interface{}) {
+func verificationNegative(t *testing.T, cases map[string]interface{}) {
 	for name, v := range cases {
 		data := v.(map[string]interface{})
 		message, err := InitMessage(
@@ -293,13 +344,32 @@ func validationNegative(t *testing.T, cases map[string]interface{}) {
 		)
 		assert.Nil(t, err)
 
-		_, err = message.Verify(data["signature"].(string), nil, nil)
+		var domainBinding *string
+		if val, ok := data["domainBinding"]; ok {
+			value := val.(string)
+			domainBinding = &value
+		}
+
+		var matchNonce *string
+		if val, ok := data["matchNonce"]; ok {
+			value := val.(string)
+			matchNonce = &value
+		}
+
+		var timestamp *time.Time
+		if val, ok := data["time"]; ok {
+			parsed, err := iso8601.ParseString(val.(string))
+			assert.Nil(t, err)
+			timestamp = &parsed
+		}
+
+		_, err = message.Verify(data["signature"].(string), domainBinding, matchNonce, timestamp)
 
 		assert.Error(t, err, name)
 	}
 }
 
-func validationPositive(t *testing.T, cases map[string]interface{}) {
+func verificationPositive(t *testing.T, cases map[string]interface{}) {
 	for name, v := range cases {
 		data := v.(map[string]interface{})
 		message, err := InitMessage(
@@ -311,7 +381,14 @@ func validationPositive(t *testing.T, cases map[string]interface{}) {
 		)
 		assert.Nil(t, err)
 
-		_, err = message.Verify(data["signature"].(string), nil, nil)
+		var timestamp *time.Time
+		if val, ok := data["time"]; ok {
+			parsed, err := iso8601.ParseString(val.(string))
+			assert.Nil(t, err)
+			timestamp = &parsed
+		}
+
+		_, err = message.Verify(data["signature"].(string), nil, nil, timestamp)
 
 		assert.Nil(t, err, name)
 	}
@@ -320,10 +397,10 @@ func validationPositive(t *testing.T, cases map[string]interface{}) {
 func TestGlobalTestVector(t *testing.T) {
 	files := make(map[string]*os.File, 4)
 	for test, filename := range map[string]string{
-		"parsing-negative":    "siwe-js/test/parsing_negative.json",
-		"parsing-positive":    "siwe-js/test/parsing_positive.json",
-		"validation-negative": "siwe-js/test/validation_negative.json",
-		"validation-positive": "siwe-js/test/validation_positive.json",
+		"parsing-negative":      "siwe-js/test/parsing_negative.json",
+		"parsing-positive":      "siwe-js/test/parsing_positive.json",
+		"verification-negative": "siwe-js/test/verification_negative.json",
+		"verification-positive": "siwe-js/test/verification_positive.json",
 	} {
 		file, err := os.Open(filename)
 		assert.Nil(t, err)
@@ -343,10 +420,10 @@ func TestGlobalTestVector(t *testing.T) {
 			parsingNegative(t, result)
 		case "parsing-positive":
 			parsingPositive(t, result)
-		case "validation-negative":
-			validationNegative(t, result)
-		case "validation-positive":
-			validationPositive(t, result)
+		case "verification-negative":
+			verificationNegative(t, result)
+		case "verification-positive":
+			verificationPositive(t, result)
 		}
 	}
 }

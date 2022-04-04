@@ -13,10 +13,65 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
-	validateURI, err := url.Parse(uri)
+func buildAuthority(uri *url.URL) string {
+	authority := uri.Host
+	if uri.User != nil {
+		authority = fmt.Sprintf("%s@%s", uri.User.String(), authority)
+	}
+	return authority
+}
+
+func validateDomain(domain *string) (bool, error) {
+	if isEmpty(domain) {
+		return false, &InvalidMessage{"`domain` must not be empty"}
+	}
+
+	validateDomain, err := url.Parse(fmt.Sprintf("https://%s", *domain))
+	if err != nil {
+		return false, &InvalidMessage{"Invalid format for field `domain`"}
+	}
+
+	authority := buildAuthority(validateDomain)
+	if authority != *domain {
+		return false, &InvalidMessage{"Invalid format for field `domain`"}
+	}
+
+	return true, nil
+}
+
+func validateURI(uri *string) (*url.URL, error) {
+	if isEmpty(uri) {
+		return nil, &InvalidMessage{"`uri` must not be empty"}
+	}
+
+	validateURI, err := url.Parse(*uri)
 	if err != nil {
 		return nil, &InvalidMessage{"Invalid format for field `uri`"}
+	}
+
+	return validateURI, nil
+}
+
+func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
+	if ok, err := validateDomain(&domain); !ok {
+		return nil, err
+	}
+
+	if isEmpty(&address) {
+		return nil, &InvalidMessage{"`address` must not be empty"}
+	}
+
+	validateURI, err := validateURI(&uri)
+	if err != nil {
+		return nil, err
+	}
+
+	if isEmpty(&version) {
+		return nil, &InvalidMessage{"`version` must not be empty"}
+	}
+
+	if version != "1" {
+		return nil, &InvalidMessage{"`version` must be \"1\""}
 	}
 
 	var statement *string
@@ -35,6 +90,8 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 	var chainId int
 	if val, ok := options["chainId"]; ok {
 		switch val.(type) {
+		case float64:
+			chainId = int(val.(float64))
 		case int:
 			chainId = val.(int)
 		case string:
@@ -87,13 +144,13 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		requestID = val
 	}
 
-	var resources []string
+	var resources []url.URL
 	if val, ok := options["resources"]; ok {
 		switch val.(type) {
-		case []string:
-			resources = val.([]string)
+		case []url.URL:
+			resources = val.([]url.URL)
 		default:
-			return nil, &InvalidMessage{"`resources` must be a []string"}
+			return nil, &InvalidMessage{"`resources` must be a []url.URL"}
 		}
 	}
 
@@ -130,6 +187,22 @@ func parseMessage(message string) (map[string]interface{}, error) {
 		}
 	}
 
+	if _, ok := result["domain"]; !ok {
+		return nil, &InvalidMessage{"`domain` must not be empty"}
+	}
+	domain := result["domain"].(string)
+	if ok, err := validateDomain(&domain); !ok {
+		return nil, err
+	}
+
+	if _, ok := result["uri"]; !ok {
+		return nil, &InvalidMessage{"`domain` must not be empty"}
+	}
+	uri := result["uri"].(string)
+	if _, err := validateURI(&uri); err != nil {
+		return nil, err
+	}
+
 	originalAddress := result["address"].(string)
 	parsedAddress := common.HexToAddress(originalAddress)
 	if originalAddress != parsedAddress.String() {
@@ -137,7 +210,16 @@ func parseMessage(message string) (map[string]interface{}, error) {
 	}
 
 	if val, ok := result["resources"]; ok {
-		result["resources"] = strings.Split(val.(string), "\n- ")[1:]
+		resources := strings.Split(val.(string), "\n- ")[1:]
+		validateResources := make([]url.URL, len(resources))
+		for i, resource := range resources {
+			validateResource, err := url.Parse(resource)
+			if err != nil {
+				return nil, &InvalidMessage{fmt.Sprintf("Invalid format for field `resources` at position %d", i)}
+			}
+			validateResources[i] = *validateResource
+		}
+		result["resources"] = validateResources
 	}
 
 	return result, nil
@@ -177,13 +259,13 @@ func (m *Message) ValidNow() (bool, error) {
 
 func (m *Message) ValidAt(when time.Time) (bool, error) {
 	if m.expirationTime != nil {
-		if time.Now().UTC().After(*m.getExpirationTime()) {
+		if when.After(*m.getExpirationTime()) {
 			return false, &ExpiredMessage{"Message expired"}
 		}
 	}
 
 	if m.notBefore != nil {
-		if time.Now().UTC().Before(*m.getNotBefore()) {
+		if when.Before(*m.getNotBefore()) {
 			return false, &InvalidMessage{"Message not yet valid"}
 		}
 	}
@@ -221,7 +303,7 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	return pkey, nil
 }
 
-func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) (*ecdsa.PublicKey, error) {
+func (m *Message) Verify(signature string, domain *string, nonce *string, timestamp *time.Time) (*ecdsa.PublicKey, error) {
 	var err error
 
 	if timestamp != nil {
@@ -234,8 +316,14 @@ func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) 
 		return nil, err
 	}
 
+	if domain != nil {
+		if m.GetDomain() != *domain {
+			return nil, &InvalidSignature{"Message domain doesn't match"}
+		}
+	}
+
 	if nonce != nil {
-		if m.GetNonce() == *nonce {
+		if m.GetNonce() != *nonce {
 			return nil, &InvalidSignature{"Message nonce doesn't match"}
 		}
 	}
@@ -281,7 +369,7 @@ func (m *Message) prepareMessage() string {
 	if len(m.resources) > 0 {
 		resourcesArr := make([]string, len(m.resources))
 		for i, v := range m.resources {
-			resourcesArr[i] = fmt.Sprintf("- %s", v)
+			resourcesArr[i] = fmt.Sprintf("- %s", v.String())
 		}
 
 		resources := strings.Join(resourcesArr, "\n")
