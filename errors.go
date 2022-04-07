@@ -9,11 +9,11 @@ type InvalidMessage struct{ string }
 type InvalidSignature struct{ string }
 
 func (m *ExpiredMessage) Error() string {
-	return "Expired Message"
+	return fmt.Sprintf("Expired Message: %s", m.string)
 }
 
 func (m *InvalidMessage) Error() string {
-	return "Invalid Message"
+	return fmt.Sprintf("Invalid Message: %s", m.string)
 }
 
 func (m *InvalidSignature) Error() string {
