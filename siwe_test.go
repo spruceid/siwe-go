@@ -52,7 +52,6 @@ var resources = parsedResources()
 
 var options = map[string]interface{}{
 	"statement":      statement,
-	"nonce":          nonce,
 	"chainId":        chainId,
 	"issuedAt":       issuedAt,
 	"expirationTime": expirationTime,
@@ -65,7 +64,7 @@ var message, _ = InitMessage(
 	domain,
 	addressStr,
 	uri,
-	version,
+	nonce,
 	options,
 )
 
@@ -92,7 +91,7 @@ func TestCreate(t *testing.T) {
 		domain,
 		addressStr,
 		uri,
-		version,
+		nonce,
 		options,
 	)
 	assert.Nil(t, err)
@@ -115,9 +114,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestCreateRequired(t *testing.T) {
-	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	message, err := InitMessage(domain, addressStr, uri, GenerateNonce(), map[string]interface{}{})
 	assert.Nil(t, err)
 
 	assert.Equal(t, message.domain, domain, "domain should be %s", domain)
@@ -140,24 +137,16 @@ func TestCreateRequired(t *testing.T) {
 func TestCreateEmpty(t *testing.T) {
 	var err error
 
-	_, err = InitMessage("", addressStr, uri, version, map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	_, err = InitMessage("", addressStr, uri, GenerateNonce(), map[string]interface{}{})
 	assert.Error(t, err)
 
-	_, err = InitMessage(domain, "", uri, version, map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	_, err = InitMessage(domain, "", uri, GenerateNonce(), map[string]interface{}{})
 	assert.Error(t, err)
 
-	_, err = InitMessage(domain, addressStr, "", version, map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	_, err = InitMessage(domain, addressStr, "", GenerateNonce(), map[string]interface{}{})
 	assert.Error(t, err)
 
-	_, err = InitMessage(domain, addressStr, uri, "", map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	_, err = InitMessage(domain, addressStr, uri, GenerateNonce(), map[string]interface{}{})
 	assert.Error(t, err)
 }
 
@@ -171,9 +160,7 @@ func TestPrepareParse(t *testing.T) {
 }
 
 func TestPrepareParseRequired(t *testing.T) {
-	message, err := InitMessage(domain, addressStr, uri, version, map[string]interface{}{
-		"nonce": GenerateNonce(),
-	})
+	message, err := InitMessage(domain, addressStr, uri, GenerateNonce(), map[string]interface{}{})
 	assert.Nil(t, err)
 
 	prepare := message.String()
@@ -206,8 +193,7 @@ func createWallet(t *testing.T) (*ecdsa.PrivateKey, string) {
 func TestValidateNotBefore(t *testing.T) {
 	privateKey, address := createWallet(t)
 
-	message, err := InitMessage(domain, address, uri, version, map[string]interface{}{
-		"nonce":     GenerateNonce(),
+	message, err := InitMessage(domain, address, uri, GenerateNonce(), map[string]interface{}{
 		"notBefore": time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
@@ -228,8 +214,7 @@ func TestValidateNotBefore(t *testing.T) {
 func TestValidateExpirationTime(t *testing.T) {
 	privateKey, address := createWallet(t)
 
-	message, err := InitMessage(domain, address, uri, version, map[string]interface{}{
-		"nonce":          GenerateNonce(),
+	message, err := InitMessage(domain, address, uri, GenerateNonce(), map[string]interface{}{
 		"expirationTime": time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339),
 	})
 	assert.Nil(t, err)
@@ -250,7 +235,7 @@ func TestValidateExpirationTime(t *testing.T) {
 func TestValidate(t *testing.T) {
 	privateKey, address := createWallet(t)
 
-	message, err := InitMessage(domain, address, uri, version, options)
+	message, err := InitMessage(domain, address, uri, nonce, options)
 	assert.Nil(t, err)
 
 	hash := message.eip191Hash()
@@ -268,7 +253,7 @@ func TestValidateTampered(t *testing.T) {
 	privateKey, address := createWallet(t)
 	_, otherAddress := createWallet(t)
 
-	message, err := InitMessage(domain, address, uri, version, options)
+	message, err := InitMessage(domain, address, uri, nonce, options)
 	assert.Nil(t, err)
 
 	hash := message.eip191Hash()
@@ -277,7 +262,7 @@ func TestValidateTampered(t *testing.T) {
 
 	assert.Nil(t, err)
 
-	message, err = InitMessage(domain, otherAddress, uri, version, options)
+	message, err = InitMessage(domain, otherAddress, uri, nonce, options)
 	assert.Nil(t, err)
 	_, err = message.Verify(hexutil.Encode(signature), nil, nil, nil)
 
@@ -339,7 +324,7 @@ func verificationNegative(t *testing.T, cases map[string]interface{}) {
 			data["domain"].(string),
 			data["address"].(string),
 			data["uri"].(string),
-			data["version"].(string),
+			data["nonce"].(string),
 			data,
 		)
 		assert.Nil(t, err)
@@ -376,7 +361,7 @@ func verificationPositive(t *testing.T, cases map[string]interface{}) {
 			data["domain"].(string),
 			data["address"].(string),
 			data["uri"].(string),
-			data["version"].(string),
+			data["nonce"].(string),
 			data,
 		)
 		assert.Nil(t, err)

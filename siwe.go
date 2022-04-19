@@ -52,7 +52,8 @@ func validateURI(uri *string) (*url.URL, error) {
 	return validateURI, nil
 }
 
-func InitMessage(domain, address, uri, version string, options map[string]interface{}) (*Message, error) {
+// InitMessage creates a Message object with the provided parameters
+func InitMessage(domain, address, uri, nonce string, options map[string]interface{}) (*Message, error) {
 	if ok, err := validateDomain(&domain); !ok {
 		return nil, err
 	}
@@ -66,25 +67,14 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		return nil, err
 	}
 
-	if isEmpty(&version) {
-		return nil, &InvalidMessage{"`version` must not be empty"}
-	}
-
-	if version != "1" {
-		return nil, &InvalidMessage{"`version` must be \"1\""}
+	if isEmpty(&nonce) {
+		return nil, &InvalidMessage{"`nonce` must not be empty"}
 	}
 
 	var statement *string
 	if val, ok := options["statement"]; ok {
 		value := val.(string)
 		statement = &value
-	}
-
-	var nonce string
-	if val, ok := isStringAndNotEmpty(options, "nonce"); ok {
-		nonce = *val
-	} else {
-		return nil, &InvalidMessage{"Missing or empty `nonce` property"}
 	}
 
 	var chainId int
@@ -158,7 +148,7 @@ func InitMessage(domain, address, uri, version string, options map[string]interf
 		domain:  domain,
 		address: common.HexToAddress(address),
 		uri:     *validateURI,
-		version: version,
+		version: "1",
 
 		statement: statement,
 		nonce:     nonce,
@@ -225,6 +215,7 @@ func parseMessage(message string) (map[string]interface{}, error) {
 	return result, nil
 }
 
+// ParseMessage returns a Message object by parsing an EIP-4361 formatted string
 func ParseMessage(message string) (*Message, error) {
 	result, err := parseMessage(message)
 	if err != nil {
@@ -235,7 +226,7 @@ func ParseMessage(message string) (*Message, error) {
 		result["domain"].(string),
 		result["address"].(string),
 		result["uri"].(string),
-		result["version"].(string),
+		result["nonce"].(string),
 		result,
 	)
 
@@ -253,10 +244,12 @@ func (m *Message) eip191Hash() common.Hash {
 	return crypto.Keccak256Hash([]byte(msg))
 }
 
+// ValidNow validates the time constraints of the message at current time.
 func (m *Message) ValidNow() (bool, error) {
 	return m.ValidAt(time.Now().UTC())
 }
 
+// ValidAt validates the time constraints of the message at a specific point in time.
 func (m *Message) ValidAt(when time.Time) (bool, error) {
 	if m.expirationTime != nil {
 		if when.After(*m.getExpirationTime()) {
@@ -273,6 +266,7 @@ func (m *Message) ValidAt(when time.Time) (bool, error) {
 	return true, nil
 }
 
+// VerifyEIP191 validates the integrity of the object by matching it's signature.
 func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	if isEmpty(&signature) {
 		return nil, &InvalidSignature{"Signature cannot be empty"}
@@ -303,6 +297,7 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	return pkey, nil
 }
 
+// Verify validates time constraints and integrity of the object by matching it's signature.
 func (m *Message) Verify(signature string, domain *string, nonce *string, timestamp *time.Time) (*ecdsa.PublicKey, error) {
 	var err error
 
