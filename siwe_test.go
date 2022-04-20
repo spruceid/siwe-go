@@ -146,7 +146,7 @@ func TestCreateEmpty(t *testing.T) {
 	_, err = InitMessage(domain, addressStr, "", GenerateNonce(), map[string]interface{}{})
 	assert.Error(t, err)
 
-	_, err = InitMessage(domain, addressStr, uri, GenerateNonce(), map[string]interface{}{})
+	_, err = InitMessage(domain, addressStr, uri, "", map[string]interface{}{})
 	assert.Error(t, err)
 }
 
