@@ -235,7 +235,7 @@ func (m *Message) Verify(signature string, nonce *string, timestamp *time.Time) 
 	}
 
 	if nonce != nil {
-		if m.GetNonce() == *nonce {
+		if m.GetNonce() != *nonce {
 			return nil, &InvalidSignature{"Message nonce doesn't match"}
 		}
 	}
