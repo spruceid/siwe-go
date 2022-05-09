@@ -38,6 +38,10 @@ func GenerateNonce() string {
 	return uniuri.NewLen(16)
 }
 
+func isNotEmpty(str *string) bool {
+	return str != nil && len(strings.TrimSpace(*str)) > 0
+}
+
 func isEmpty(str *string) bool {
 	return str == nil || len(strings.TrimSpace(*str)) == 0
 }

@@ -5,12 +5,12 @@ import (
 	"regexp"
 )
 
-const _SIWE_DOMAIN = "^(?P<domain>([^?#]*)) wants you to sign in with your Ethereum account:\\n"
+const _SIWE_DOMAIN = "(?P<domain>([^/?#]+)) wants you to sign in with your Ethereum account:\\n"
 const _SIWE_ADDRESS = "(?P<address>0x[a-zA-Z0-9]{40})\\n\\n"
 const _SIWE_STATEMENT = "((?P<statement>[^\\n]+)\\n)?\\n"
-const _SIWE_URI = "(([^:?#]+):)?(([^?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))"
+const _RFC3986 = "(([^ :/?#]+):)?(//([^ /?#]*))?([^ ?#]*)(\\?([^ #]*))?(#(.*))?"
 
-var _SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", _SIWE_URI)
+var _SIWE_URI_LINE = fmt.Sprintf("URI: (?P<uri>%s?)\\n", _RFC3986)
 
 const _SIWE_VERSION = "Version: (?P<version>1)\\n"
 const _SIWE_CHAIN_ID = "Chain ID: (?P<chainId>[0-9]+)\\n"
@@ -23,9 +23,9 @@ var _SIWE_NOT_BEFORE = fmt.Sprintf("(\\nNot Before: (?P<notBefore>%s))?", _SIWE_
 
 const _SIWE_REQUEST_ID = "(\\nRequest ID: (?P<requestId>[-._~!$&'()*+,;=:@%a-zA-Z0-9]*))?"
 
-var _SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s?)+))?$", _SIWE_URI)
+var _SIWE_RESOURCES = fmt.Sprintf("(\\nResources:(?P<resources>(\\n- %s)+))?", _RFC3986)
 
-var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s%s",
+var _SIWE_MESSAGE = regexp.MustCompile(fmt.Sprintf("^%s%s%s%s%s%s%s%s%s%s%s%s$",
 	_SIWE_DOMAIN,
 	_SIWE_ADDRESS,
 	_SIWE_STATEMENT,

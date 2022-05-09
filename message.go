@@ -23,7 +23,7 @@ type Message struct {
 	notBefore      *string
 
 	requestID *string
-	resources []string
+	resources []url.URL
 }
 
 func (m *Message) GetDomain() string {
@@ -102,6 +102,6 @@ func (m *Message) GetRequestID() *string {
 	return nil
 }
 
-func (m *Message) GetResources() []string {
+func (m *Message) GetResources() []url.URL {
 	return m.resources
 }
