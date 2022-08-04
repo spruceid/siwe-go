@@ -278,10 +278,10 @@ func (m *Message) VerifyEIP191(signature string) (*ecdsa.PublicKey, error) {
 	}
 
 	// Ref:https://github.com/ethereum/go-ethereum/blob/55599ee95d4151a2502465e0afc7c47bd1acba77/internal/ethapi/api.go#L442
-	if sigBytes[64] != 27 && sigBytes[64] != 28 {
+	sigBytes[64] %= 27
+	if sigBytes[64] != 0 && sigBytes[64] != 1 {
 		return nil, &InvalidSignature{"Invalid signature recovery byte"}
 	}
-	sigBytes[64] -= 27
 
 	pkey, err := crypto.SigToPub(m.eip191Hash().Bytes(), sigBytes)
 	if err != nil {
