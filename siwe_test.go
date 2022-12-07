@@ -317,6 +317,15 @@ func parsingPositive(t *testing.T, cases map[string]interface{}) {
 	}
 }
 
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
+}
+
 func verificationNegative(t *testing.T, cases map[string]interface{}) {
 	for name, v := range cases {
 		data := v.(map[string]interface{})
@@ -327,7 +336,12 @@ func verificationNegative(t *testing.T, cases map[string]interface{}) {
 			data["nonce"].(string),
 			data,
 		)
-		assert.Nil(t, err)
+		if contains([]string{"invalid issuedAt", "invalid expirationTime", "invalid notBefore"}, name) {
+			assert.Error(t, err, name)
+			continue
+		} else {
+			assert.Nil(t, err, name)
+		}
 
 		var domainBinding *string
 		if val, ok := data["domainBinding"]; ok {
