@@ -336,9 +336,9 @@ func verificationNegative(t *testing.T, cases map[string]interface{}) {
 			data["nonce"].(string),
 			data,
 		)
-		if contains([]string{"invalid issuedAt", "invalid expirationTime"}, name) {
+		if contains([]string{"invalid issuedAt", "invalid expirationTime", "invalid notBefore"}, name) {
 			assert.Error(t, err, name)
-			return
+			continue
 		} else {
 			assert.Nil(t, err, name)
 		}
