@@ -65,20 +65,21 @@ can be done in a single call with verify:
 var publicKey *ecdsa.PublicKey
 var err error
 
-// Optional nonce variable to be matched against the
+// Optional domain and nonce variable to be matched against the
 // built message struct being verified
+var optionalDomain *string
 var optionalNonce *string
 
 // Optional timestamp variable to verify at any point
 // in time, by default it will use `time.Now()`
 var optionalTimestamp *time.Time
 
-publicKey, err = message.Verify(signature, optionalNonce, optionalTimestamp)
+publicKey, err = message.Verify(signature, optionalDomain, optionalNonce, optionalTimestamp)
 
-// If you won't be using nonce matching and want
+// If you won't be using domain and nonce matching and want
 // to verify the message at current time, it's
-// safe to pass `nil` in both arguments
-publicKey, err = message.Verify(signature, nil, nil)
+// safe to pass `nil` in these arguments
+publicKey, err = message.Verify(signature, nil, nil, nil)
 ```
 
 ### Serialization of a SIWE Message
