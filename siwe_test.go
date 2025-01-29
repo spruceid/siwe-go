@@ -3,7 +3,7 @@ package siwe
 import (
 	"crypto/ecdsa"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"os"
 	"strconv"
@@ -239,7 +239,7 @@ func TestValidate(t *testing.T) {
 	assert.Nil(t, err)
 
 	hash := message.eip191Hash()
-	signature, err := crypto.Sign(hash.Bytes(), privateKey)
+	signature, err := crypto.Sign(hash, privateKey)
 	signature[64] += 27
 
 	assert.Nil(t, err)
@@ -257,7 +257,7 @@ func TestValidateTampered(t *testing.T) {
 	assert.Nil(t, err)
 
 	hash := message.eip191Hash()
-	signature, err := crypto.Sign(hash.Bytes(), privateKey)
+	signature, err := crypto.Sign(hash, privateKey)
 	signature[64] += 27
 
 	assert.Nil(t, err)
@@ -408,11 +408,12 @@ func TestGlobalTestVector(t *testing.T) {
 	}
 
 	for test, file := range files {
-		data, _ := ioutil.ReadAll(file)
+		data, err := io.ReadAll(file)
+		assert.NoError(t, err, test)
 
 		var result map[string]interface{}
-		err := json.Unmarshal([]byte(data), &result)
-		assert.Nil(t, err)
+		err = json.Unmarshal([]byte(data), &result)
+		assert.NoError(t, err)
 
 		switch test {
 		case "parsing-negative":
